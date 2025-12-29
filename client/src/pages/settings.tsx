@@ -5,21 +5,62 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Copy, Check, RefreshCw, Key, Server, Code } from "lucide-react";
+import { Copy, Check, RefreshCw, Key, Server, Code, Users, Plus, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
+interface UserInfo {
+  id: string;
+  username: string;
+  createdAt: string;
+}
 
 interface SettingsProps {
   apiKey: string;
   onRegenerateKey: () => void;
   isRegenerating: boolean;
+  users?: UserInfo[];
+  currentUserId?: string;
+  onCreateUser?: (username: string, password: string) => void;
+  onDeleteUser?: (userId: string) => void;
+  isCreatingUser?: boolean;
 }
 
-export function Settings({ apiKey, onRegenerateKey, isRegenerating }: SettingsProps) {
+export function Settings({ 
+  apiKey, 
+  onRegenerateKey, 
+  isRegenerating,
+  users = [],
+  currentUserId,
+  onCreateUser,
+  onDeleteUser,
+  isCreatingUser,
+}: SettingsProps) {
   const [copied, setCopied] = useState<string | null>(null);
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopied(id);
     setTimeout(() => setCopied(null), 2000);
+  };
+
+  const handleCreateUser = () => {
+    if (newUsername && newPassword && onCreateUser) {
+      onCreateUser(newUsername, newPassword);
+      setNewUsername("");
+      setNewPassword("");
+    }
   };
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://your-app.repl.co";
@@ -28,8 +69,94 @@ export function Settings({ apiKey, onRegenerateKey, isRegenerating }: SettingsPr
     <div className="p-6 space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-semibold" data-testid="text-settings-title">Settings</h1>
-        <p className="text-sm text-muted-foreground">Manage your API key and integration settings</p>
+        <p className="text-sm text-muted-foreground">Manage your API key, users, and integration settings</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-lg">User Management</CardTitle>
+          </div>
+          <CardDescription>
+            Create and manage user accounts for this application.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <Input
+              placeholder="Username"
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+              data-testid="input-new-username"
+            />
+            <Input
+              type="password"
+              placeholder="Password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              data-testid="input-new-password"
+            />
+            <Button
+              onClick={handleCreateUser}
+              disabled={!newUsername || !newPassword || isCreatingUser}
+              data-testid="button-create-user"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              {isCreatingUser ? "Creating..." : "Add User"}
+            </Button>
+          </div>
+
+          {users.length > 0 && (
+            <div className="border rounded-md divide-y">
+              {users.map((user) => (
+                <div key={user.id} className="flex items-center justify-between p-3">
+                  <div className="flex items-center gap-3">
+                    <span className="font-medium" data-testid={`text-user-${user.id}`}>
+                      {user.username}
+                    </span>
+                    {user.id === currentUserId && (
+                      <Badge variant="outline" className="text-xs">You</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(user.createdAt).toLocaleDateString()}
+                    </span>
+                    {user.id !== currentUserId && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            data-testid={`button-delete-user-${user.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete User</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete user "{user.username}"? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => onDeleteUser?.(user.id)}>
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

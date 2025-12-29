@@ -198,11 +198,25 @@ function ExecuteToolPage() {
   );
 }
 
+interface UserInfo {
+  id: string;
+  username: string;
+  createdAt: string;
+}
+
 function SettingsPage() {
   const { toast } = useToast();
 
+  const { data: currentUser } = useQuery<AuthUser | null>({
+    queryKey: ["/api/auth/user"],
+  });
+
   const { data: apiKeyData } = useQuery<{ key: string }>({
     queryKey: ["/api/settings/api-key"],
+  });
+
+  const { data: users = [] } = useQuery<UserInfo[]>({
+    queryKey: ["/api/users"],
   });
 
   const regenerateMutation = useMutation({
@@ -218,11 +232,46 @@ function SettingsPage() {
     },
   });
 
+  const createUserMutation = useMutation({
+    mutationFn: async ({ username, password }: { username: string; password: string }) => {
+      return apiRequest("POST", "/api/users", { username, password });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Success", description: "User created" });
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: "Error", 
+        description: error.message.includes("409") ? "Username already exists" : "Failed to create user",
+        variant: "destructive" 
+      });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return apiRequest("DELETE", `/api/users/${userId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "Success", description: "User deleted" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete user", variant: "destructive" });
+    },
+  });
+
   return (
     <Settings
       apiKey={apiKeyData?.key || "loading..."}
       onRegenerateKey={() => regenerateMutation.mutate()}
       isRegenerating={regenerateMutation.isPending}
+      users={users}
+      currentUserId={currentUser?.id}
+      onCreateUser={(username, password) => createUserMutation.mutate({ username, password })}
+      onDeleteUser={(userId) => deleteUserMutation.mutate(userId)}
+      isCreatingUser={createUserMutation.isPending}
     />
   );
 }

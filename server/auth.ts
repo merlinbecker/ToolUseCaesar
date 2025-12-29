@@ -10,7 +10,7 @@ import createMemoryStore from "memorystore";
 
 const scryptAsync = promisify(scrypt);
 
-async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
   const buf = (await scryptAsync(password, salt, 64)) as Buffer;
   return `${buf.toString("hex")}.${salt}`;
@@ -32,6 +32,29 @@ declare global {
       createdAt: Date;
     }
   }
+}
+
+export async function initializeAdminUser(): Promise<void> {
+  const adminUsername = process.env.ADMIN_USERNAME;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!adminUsername || !adminPassword) {
+    console.log("[auth] No ADMIN_USERNAME/ADMIN_PASSWORD env vars set - skipping admin user creation");
+    return;
+  }
+
+  const existingAdmin = await storage.getUserByUsername(adminUsername);
+  if (existingAdmin) {
+    console.log(`[auth] Admin user "${adminUsername}" already exists`);
+    return;
+  }
+
+  const hashedPassword = await hashPassword(adminPassword);
+  await storage.createUser({
+    username: adminUsername,
+    password: hashedPassword,
+  });
+  console.log(`[auth] Created admin user "${adminUsername}"`);
 }
 
 export function setupAuth(app: Express): void {
@@ -80,44 +103,6 @@ export function setupAuth(app: Express): void {
       done(null, user || undefined);
     } catch (error) {
       done(error);
-    }
-  });
-
-  app.post("/api/auth/register", async (req: Request, res: Response) => {
-    try {
-      const { username, password } = req.body;
-      
-      if (!username || !password) {
-        res.status(400).json({ error: "Username and password are required" });
-        return;
-      }
-
-      if (password.length < 4) {
-        res.status(400).json({ error: "Password must be at least 4 characters" });
-        return;
-      }
-
-      const existingUser = await storage.getUserByUsername(username);
-      if (existingUser) {
-        res.status(409).json({ error: "Username already exists" });
-        return;
-      }
-
-      const hashedPassword = await hashPassword(password);
-      const user = await storage.createUser({
-        username,
-        password: hashedPassword,
-      });
-
-      req.login(user, (err) => {
-        if (err) {
-          res.status(500).json({ error: "Failed to login after registration" });
-          return;
-        }
-        res.status(201).json({ id: user.id, username: user.username });
-      });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to register user" });
     }
   });
 

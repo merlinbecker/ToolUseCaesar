@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, requireAuth } from "./auth";
+import { setupAuth, requireAuth, hashPassword } from "./auth";
 import { 
   insertToolSchema, insertChainSchema,
   type MistralFunction, type ToolExecutionResult, type ChainExecutionResult, type Tool 
@@ -514,6 +514,65 @@ export async function registerRoutes(
       res.json(apiKey);
     } catch (error) {
       res.status(500).json({ error: "Failed to regenerate API key" });
+    }
+  });
+
+  app.get("/api/users", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const allUsers = await storage.getAllUsers();
+      res.json(allUsers.map(u => ({ id: u.id, username: u.username, createdAt: u.createdAt })));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  app.post("/api/users", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { username, password } = req.body;
+      
+      if (!username || !password) {
+        res.status(400).json({ error: "Username and password are required" });
+        return;
+      }
+
+      if (password.length < 4) {
+        res.status(400).json({ error: "Password must be at least 4 characters" });
+        return;
+      }
+
+      const existingUser = await storage.getUserByUsername(username);
+      if (existingUser) {
+        res.status(409).json({ error: "Username already exists" });
+        return;
+      }
+
+      const hashedPassword = await hashPassword(password);
+      const user = await storage.createUser({
+        username,
+        password: hashedPassword,
+      });
+
+      res.status(201).json({ id: user.id, username: user.username, createdAt: user.createdAt });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create user" });
+    }
+  });
+
+  app.delete("/api/users/:id", requireAuth, async (req: Request, res: Response) => {
+    try {
+      if (req.user?.id === req.params.id) {
+        res.status(400).json({ error: "Cannot delete your own account" });
+        return;
+      }
+
+      const deleted = await storage.deleteUser(req.params.id);
+      if (!deleted) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete user" });
     }
   });
 
