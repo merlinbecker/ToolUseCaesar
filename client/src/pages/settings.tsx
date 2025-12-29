@@ -1,0 +1,208 @@
+import { useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Copy, Check, RefreshCw, Key, Server, Code } from "lucide-react";
+
+interface SettingsProps {
+  apiKey: string;
+  onRegenerateKey: () => void;
+  isRegenerating: boolean;
+}
+
+export function Settings({ apiKey, onRegenerateKey, isRegenerating }: SettingsProps) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(id);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : "https://your-app.repl.co";
+
+  return (
+    <div className="p-6 space-y-6 max-w-4xl">
+      <div>
+        <h1 className="text-2xl font-semibold" data-testid="text-settings-title">Settings</h1>
+        <p className="text-sm text-muted-foreground">Manage your API key and integration settings</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Key className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-lg">API Key</CardTitle>
+          </div>
+          <CardDescription>
+            Your API key is required for all API calls. Include it in the URL path for authentication.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Input
+              type="text"
+              value={apiKey}
+              readOnly
+              className="font-mono"
+              data-testid="input-api-key"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => copyToClipboard(apiKey, "apiKey")}
+              data-testid="button-copy-api-key"
+            >
+              {copied === "apiKey" ? (
+                <Check className="h-4 w-4 text-green-500" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={onRegenerateKey}
+              disabled={isRegenerating}
+              data-testid="button-regenerate-key"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isRegenerating ? "animate-spin" : ""}`} />
+              Regenerate
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Keep your API key secure. Regenerating will invalidate the current key.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Server className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-lg">API Endpoints</CardTitle>
+          </div>
+          <CardDescription>
+            Use these endpoints to integrate with LLM agents and external systems.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              List Active Tools (MCP Server)
+            </Label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 p-3 bg-muted rounded-md font-mono text-sm flex items-center gap-2 overflow-auto">
+                <Badge variant="secondary">GET</Badge>
+                <span>{baseUrl}/<span className="text-primary">{apiKey}</span>/tools</span>
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => copyToClipboard(`${baseUrl}/${apiKey}/tools`, "listTools")}
+                data-testid="button-copy-list-endpoint"
+              >
+                {copied === "listTools" ? (
+                  <Check className="h-4 w-4 text-green-500" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Returns all active tools in Mistral function call format for agent integration.
+            </p>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Execute Tool
+            </Label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 p-3 bg-muted rounded-md font-mono text-sm flex items-center gap-2 overflow-auto">
+                <Badge variant="secondary">POST</Badge>
+                <span>{baseUrl}/<span className="text-primary">{apiKey}</span>/tools/<span className="text-muted-foreground">{"<tool_name>"}</span></span>
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => copyToClipboard(`${baseUrl}/${apiKey}/tools/<tool_name>`, "executeTool")}
+                data-testid="button-copy-execute-endpoint"
+              >
+                {copied === "executeTool" ? (
+                  <Check className="h-4 w-4 text-green-500" />
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Execute a specific tool by name. Send parameters as JSON in the request body.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Code className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-lg">Integration Examples</CardTitle>
+          </div>
+          <CardDescription>
+            Example code for integrating with your tools.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Fetch Active Tools (JavaScript)
+            </Label>
+            <pre className="p-4 bg-muted rounded-md font-mono text-sm overflow-auto">
+              <code>{`const response = await fetch("${baseUrl}/${apiKey}/tools");
+const tools = await response.json();
+// tools is an array of Mistral function definitions`}</code>
+            </pre>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Execute Tool (JavaScript)
+            </Label>
+            <pre className="p-4 bg-muted rounded-md font-mono text-sm overflow-auto">
+              <code>{`const response = await fetch("${baseUrl}/${apiKey}/tools/get_weather", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ location: "Berlin" })
+});
+const result = await response.json();`}</code>
+            </pre>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-2">
+            <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              cURL Example
+            </Label>
+            <pre className="p-4 bg-muted rounded-md font-mono text-sm overflow-auto">
+              <code>{`# List tools
+curl "${baseUrl}/${apiKey}/tools"
+
+# Execute tool
+curl -X POST "${baseUrl}/${apiKey}/tools/get_weather" \\
+  -H "Content-Type: application/json" \\
+  -d '{"location": "Berlin"}'`}</code>
+            </pre>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
