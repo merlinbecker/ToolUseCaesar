@@ -1,3 +1,6 @@
+import { pgTable, text, boolean, integer, timestamp, jsonb, varchar } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
+import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const toolParameterSchema = z.object({
@@ -20,28 +23,86 @@ export const httpConfigSchema = z.object({
   bodyTemplate: z.string().optional(),
 });
 
-export const toolSchema = z.object({
-  id: z.string(),
+export type ToolParameters = z.infer<typeof toolParametersSchema>;
+export type HttpConfig = z.infer<typeof httpConfigSchema>;
+
+export const users = pgTable("users", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  username: text("username").unique().notNull(),
+  password: text("password").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const tools = pgTable("tools", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").unique().notNull(),
+  description: text("description").notNull(),
+  parameters: jsonb("parameters").notNull().$type<ToolParameters>(),
+  httpConfig: jsonb("http_config").$type<HttpConfig>(),
+  preprocessing: text("preprocessing"),
+  postprocessing: text("postprocessing"),
+  fakeResponse: text("fake_response"),
+  useFakeResponse: boolean("use_fake_response").default(false).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  executionCount: integer("execution_count").default(0).notNull(),
+  lastModified: timestamp("last_modified").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const chainStepSchema = z.object({
+  toolId: z.string(),
+  inputMapping: z.record(z.string()).optional(),
+  continueOnError: z.boolean().default(false),
+});
+
+export type ChainStep = z.infer<typeof chainStepSchema>;
+
+export const toolChains = pgTable("tool_chains", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").unique().notNull(),
+  description: text("description").notNull(),
+  steps: jsonb("steps").notNull().$type<ChainStep[]>(),
+  isActive: boolean("is_active").default(true).notNull(),
+  executionCount: integer("execution_count").default(0).notNull(),
+  lastModified: timestamp("last_modified").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const apiKeys = pgTable("api_keys", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  key: text("key").unique().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const usersRelations = relations(users, ({ many }) => ({
+}));
+
+export const toolsRelations = relations(tools, ({ many }) => ({
+}));
+
+export const toolChainsRelations = relations(toolChains, ({ many }) => ({
+}));
+
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
+export const insertToolSchema = createInsertSchema(tools).omit({ id: true, executionCount: true, lastModified: true, createdAt: true }).extend({
   name: z.string().min(1, "Name is required").regex(/^[a-z_][a-z0-9_]*$/i, "Name must be alphanumeric with underscores"),
   description: z.string().min(1, "Description is required"),
   parameters: toolParametersSchema,
   httpConfig: httpConfigSchema.optional(),
-  preprocessing: z.string().optional(),
-  postprocessing: z.string().optional(),
-  fakeResponse: z.string().optional(),
-  useFakeResponse: z.boolean().default(false),
-  isActive: z.boolean().default(true),
-  executionCount: z.number().default(0),
-  lastModified: z.string(),
-  createdAt: z.string(),
+});
+export const insertChainSchema = createInsertSchema(toolChains).omit({ id: true, executionCount: true, lastModified: true, createdAt: true }).extend({
+  name: z.string().min(1, "Name is required").regex(/^[a-z_][a-z0-9_-]*$/i, "Name must be alphanumeric with underscores or hyphens"),
+  description: z.string().min(1, "Description is required"),
+  steps: z.array(chainStepSchema).min(1, "At least one step is required"),
 });
 
-export const insertToolSchema = toolSchema.omit({ id: true, executionCount: true, lastModified: true, createdAt: true });
-
-export type Tool = z.infer<typeof toolSchema>;
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type Tool = typeof tools.$inferSelect;
 export type InsertTool = z.infer<typeof insertToolSchema>;
-export type ToolParameters = z.infer<typeof toolParametersSchema>;
-export type HttpConfig = z.infer<typeof httpConfigSchema>;
+export type ToolChain = typeof toolChains.$inferSelect;
+export type InsertChain = z.infer<typeof insertChainSchema>;
+export type ApiKey = typeof apiKeys.$inferSelect;
 
 export const mistralFunctionSchema = z.object({
   type: z.literal("function"),
@@ -70,13 +131,26 @@ export const toolExecutionResultSchema = z.object({
 
 export type ToolExecutionResult = z.infer<typeof toolExecutionResultSchema>;
 
+export const chainExecutionResultSchema = z.object({
+  success: z.boolean(),
+  results: z.array(z.object({
+    stepIndex: z.number(),
+    toolId: z.string(),
+    toolName: z.string(),
+    success: z.boolean(),
+    result: z.any().optional(),
+    error: z.string().optional(),
+    executionTime: z.number(),
+  })),
+  totalExecutionTime: z.number(),
+  error: z.string().optional(),
+});
+
+export type ChainExecutionResult = z.infer<typeof chainExecutionResultSchema>;
+
 export const apiKeyConfigSchema = z.object({
   key: z.string(),
-  createdAt: z.string(),
+  createdAt: z.coerce.date(),
 });
 
 export type ApiKeyConfig = z.infer<typeof apiKeyConfigSchema>;
-
-export const users = null;
-export type User = { id: string; username: string; password: string };
-export type InsertUser = { username: string; password: string };

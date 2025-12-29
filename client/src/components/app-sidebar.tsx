@@ -13,18 +13,19 @@ import {
 } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, LayoutDashboard, Plus, Settings, Zap, Box } from "lucide-react";
+import { Search, LayoutDashboard, Plus, Settings, Zap, Box, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Tool } from "@shared/schema";
+import type { Tool, ToolChain } from "@shared/schema";
 
 interface AppSidebarProps {
   tools: Tool[];
+  chains?: ToolChain[];
   searchQuery: string;
   onSearchChange: (query: string) => void;
   isLoading?: boolean;
 }
 
-export function AppSidebar({ tools, searchQuery, onSearchChange, isLoading }: AppSidebarProps) {
+export function AppSidebar({ tools, chains = [], searchQuery, onSearchChange, isLoading }: AppSidebarProps) {
   const [location] = useLocation();
 
   const filteredTools = tools.filter((tool) =>
@@ -32,7 +33,13 @@ export function AppSidebar({ tools, searchQuery, onSearchChange, isLoading }: Ap
     tool.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const activeCount = tools.filter((t) => t.isActive).length;
+  const filteredChains = chains.filter((chain) =>
+    chain.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    chain.description.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const activeToolCount = tools.filter((t) => t.isActive).length;
+  const activeChainCount = chains.filter((c) => c.isActive).length;
 
   return (
     <Sidebar>
@@ -49,7 +56,7 @@ export function AppSidebar({ tools, searchQuery, onSearchChange, isLoading }: Ap
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search tools..."
+            placeholder="Search..."
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             className="pl-9"
@@ -67,6 +74,14 @@ export function AppSidebar({ tools, searchQuery, onSearchChange, isLoading }: Ap
                   <Link href="/" data-testid="link-dashboard">
                     <LayoutDashboard className="h-4 w-4" />
                     <span>Dashboard</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={location === "/chains"}>
+                  <Link href="/chains" data-testid="link-chains">
+                    <Link2 className="h-4 w-4" />
+                    <span>Chains</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -94,14 +109,14 @@ export function AppSidebar({ tools, searchQuery, onSearchChange, isLoading }: Ap
           <SidebarGroupLabel className="flex items-center justify-between gap-2">
             <span>Tools</span>
             <Badge variant="secondary" className="text-xs">
-              {activeCount}/{tools.length}
+              {activeToolCount}/{tools.length}
             </Badge>
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {isLoading ? (
                 <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  Loading tools...
+                  Loading...
                 </div>
               ) : filteredTools.length === 0 ? (
                 <div className="px-4 py-6 text-center text-sm text-muted-foreground">
@@ -133,6 +148,48 @@ export function AppSidebar({ tools, searchQuery, onSearchChange, isLoading }: Ap
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {(chains.length > 0 || searchQuery) && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center justify-between gap-2">
+              <span>Chains</span>
+              <Badge variant="secondary" className="text-xs">
+                {activeChainCount}/{chains.length}
+              </Badge>
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {filteredChains.length === 0 ? (
+                  <div className="px-4 py-3 text-center text-sm text-muted-foreground">
+                    {searchQuery ? "No chains found" : "No chains yet"}
+                  </div>
+                ) : (
+                  filteredChains.map((chain) => (
+                    <SidebarMenuItem key={chain.id}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={location === `/chains/${chain.id}`}
+                      >
+                        <Link
+                          href={`/chains/${chain.id}`}
+                          data-testid={`link-chain-${chain.id}`}
+                        >
+                          <Link2 className="h-4 w-4" />
+                          <span className="flex-1 truncate">{chain.name}</span>
+                          <span
+                            className={`h-2 w-2 rounded-full ${
+                              chain.isActive ? "bg-green-500" : "bg-muted-foreground"
+                            }`}
+                          />
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))
+                )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-4">

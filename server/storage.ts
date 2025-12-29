@@ -1,7 +1,19 @@
-import type { Tool, InsertTool, ApiKeyConfig } from "@shared/schema";
+import { 
+  users, tools, toolChains, apiKeys,
+  type User, type InsertUser, 
+  type Tool, type InsertTool, 
+  type ToolChain, type InsertChain,
+  type ApiKeyConfig 
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
+  getUser(id: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  
   getAllTools(): Promise<Tool[]>;
   getTool(id: string): Promise<Tool | undefined>;
   getToolByName(name: string): Promise<Tool | undefined>;
@@ -10,29 +22,163 @@ export interface IStorage {
   deleteTool(id: string): Promise<boolean>;
   incrementExecutionCount(id: string): Promise<void>;
   getActiveTools(): Promise<Tool[]>;
+  
+  getAllChains(): Promise<ToolChain[]>;
+  getChain(id: string): Promise<ToolChain | undefined>;
+  getChainByName(name: string): Promise<ToolChain | undefined>;
+  createChain(chain: InsertChain): Promise<ToolChain>;
+  updateChain(id: string, chain: Partial<InsertChain>): Promise<ToolChain | undefined>;
+  deleteChain(id: string): Promise<boolean>;
+  incrementChainExecutionCount(id: string): Promise<void>;
+  getActiveChains(): Promise<ToolChain[]>;
+  
   getApiKey(): Promise<ApiKeyConfig>;
   regenerateApiKey(): Promise<ApiKeyConfig>;
+  
+  initializeSampleData(): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private tools: Map<string, Tool>;
-  private apiKey: ApiKeyConfig;
-
-  constructor() {
-    this.tools = new Map();
-    this.apiKey = {
-      key: this.generateApiKey(),
-      createdAt: new Date().toISOString(),
-    };
-
-    this.initializeSampleTools();
-  }
-
+export class DatabaseStorage implements IStorage {
   private generateApiKey(): string {
     return `caesar_${randomUUID().replace(/-/g, "").substring(0, 24)}`;
   }
 
-  private initializeSampleTools() {
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
+  }
+
+  async getAllTools(): Promise<Tool[]> {
+    return db.select().from(tools).orderBy(desc(tools.lastModified));
+  }
+
+  async getTool(id: string): Promise<Tool | undefined> {
+    const [tool] = await db.select().from(tools).where(eq(tools.id, id));
+    return tool || undefined;
+  }
+
+  async getToolByName(name: string): Promise<Tool | undefined> {
+    const [tool] = await db.select().from(tools).where(eq(tools.name, name));
+    return tool || undefined;
+  }
+
+  async createTool(insertTool: InsertTool): Promise<Tool> {
+    const [tool] = await db.insert(tools).values({
+      ...insertTool,
+      lastModified: new Date(),
+    }).returning();
+    return tool;
+  }
+
+  async updateTool(id: string, updates: Partial<InsertTool>): Promise<Tool | undefined> {
+    const [tool] = await db
+      .update(tools)
+      .set({ ...updates, lastModified: new Date() })
+      .where(eq(tools.id, id))
+      .returning();
+    return tool || undefined;
+  }
+
+  async deleteTool(id: string): Promise<boolean> {
+    const result = await db.delete(tools).where(eq(tools.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async incrementExecutionCount(id: string): Promise<void> {
+    await db
+      .update(tools)
+      .set({ 
+        executionCount: sql`${tools.executionCount} + 1`,
+        lastModified: new Date()
+      })
+      .where(eq(tools.id, id));
+  }
+
+  async getActiveTools(): Promise<Tool[]> {
+    return db.select().from(tools).where(eq(tools.isActive, true));
+  }
+
+  async getAllChains(): Promise<ToolChain[]> {
+    return db.select().from(toolChains).orderBy(desc(toolChains.lastModified));
+  }
+
+  async getChain(id: string): Promise<ToolChain | undefined> {
+    const [chain] = await db.select().from(toolChains).where(eq(toolChains.id, id));
+    return chain || undefined;
+  }
+
+  async getChainByName(name: string): Promise<ToolChain | undefined> {
+    const [chain] = await db.select().from(toolChains).where(eq(toolChains.name, name));
+    return chain || undefined;
+  }
+
+  async createChain(insertChain: InsertChain): Promise<ToolChain> {
+    const [chain] = await db.insert(toolChains).values({
+      ...insertChain,
+      lastModified: new Date(),
+    }).returning();
+    return chain;
+  }
+
+  async updateChain(id: string, updates: Partial<InsertChain>): Promise<ToolChain | undefined> {
+    const [chain] = await db
+      .update(toolChains)
+      .set({ ...updates, lastModified: new Date() })
+      .where(eq(toolChains.id, id))
+      .returning();
+    return chain || undefined;
+  }
+
+  async deleteChain(id: string): Promise<boolean> {
+    const result = await db.delete(toolChains).where(eq(toolChains.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async incrementChainExecutionCount(id: string): Promise<void> {
+    await db
+      .update(toolChains)
+      .set({ 
+        executionCount: sql`${toolChains.executionCount} + 1`,
+        lastModified: new Date()
+      })
+      .where(eq(toolChains.id, id));
+  }
+
+  async getActiveChains(): Promise<ToolChain[]> {
+    return db.select().from(toolChains).where(eq(toolChains.isActive, true));
+  }
+
+  async getApiKey(): Promise<ApiKeyConfig> {
+    const [existing] = await db.select().from(apiKeys).limit(1);
+    if (existing) {
+      return { key: existing.key, createdAt: existing.createdAt };
+    }
+    const newKey = this.generateApiKey();
+    const [created] = await db.insert(apiKeys).values({ key: newKey }).returning();
+    return { key: created.key, createdAt: created.createdAt };
+  }
+
+  async regenerateApiKey(): Promise<ApiKeyConfig> {
+    await db.delete(apiKeys);
+    const newKey = this.generateApiKey();
+    const [created] = await db.insert(apiKeys).values({ key: newKey }).returning();
+    return { key: created.key, createdAt: created.createdAt };
+  }
+
+  async initializeSampleData(): Promise<void> {
+    const existingTools = await db.select().from(tools).limit(1);
+    if (existingTools.length > 0) return;
+
     const sampleTools: InsertTool[] = [
       {
         name: "get_weather",
@@ -144,88 +290,13 @@ export class MemStorage implements IStorage {
     ];
 
     for (const tool of sampleTools) {
-      const id = randomUUID();
-      const now = new Date().toISOString();
-      this.tools.set(id, {
+      await db.insert(tools).values({
         ...tool,
-        id,
         executionCount: Math.floor(Math.random() * 50),
-        lastModified: now,
-        createdAt: now,
+        lastModified: new Date(),
       });
     }
   }
-
-  async getAllTools(): Promise<Tool[]> {
-    return Array.from(this.tools.values()).sort((a, b) =>
-      new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime()
-    );
-  }
-
-  async getTool(id: string): Promise<Tool | undefined> {
-    return this.tools.get(id);
-  }
-
-  async getToolByName(name: string): Promise<Tool | undefined> {
-    return Array.from(this.tools.values()).find((t) => t.name === name);
-  }
-
-  async createTool(insertTool: InsertTool): Promise<Tool> {
-    const id = randomUUID();
-    const now = new Date().toISOString();
-    const tool: Tool = {
-      ...insertTool,
-      id,
-      executionCount: 0,
-      lastModified: now,
-      createdAt: now,
-    };
-    this.tools.set(id, tool);
-    return tool;
-  }
-
-  async updateTool(id: string, updates: Partial<InsertTool>): Promise<Tool | undefined> {
-    const existing = this.tools.get(id);
-    if (!existing) return undefined;
-
-    const updated: Tool = {
-      ...existing,
-      ...updates,
-      id,
-      lastModified: new Date().toISOString(),
-    };
-    this.tools.set(id, updated);
-    return updated;
-  }
-
-  async deleteTool(id: string): Promise<boolean> {
-    return this.tools.delete(id);
-  }
-
-  async incrementExecutionCount(id: string): Promise<void> {
-    const tool = this.tools.get(id);
-    if (tool) {
-      tool.executionCount += 1;
-      tool.lastModified = new Date().toISOString();
-      this.tools.set(id, tool);
-    }
-  }
-
-  async getActiveTools(): Promise<Tool[]> {
-    return Array.from(this.tools.values()).filter((t) => t.isActive);
-  }
-
-  async getApiKey(): Promise<ApiKeyConfig> {
-    return this.apiKey;
-  }
-
-  async regenerateApiKey(): Promise<ApiKeyConfig> {
-    this.apiKey = {
-      key: this.generateApiKey(),
-      createdAt: new Date().toISOString(),
-    };
-    return this.apiKey;
-  }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
