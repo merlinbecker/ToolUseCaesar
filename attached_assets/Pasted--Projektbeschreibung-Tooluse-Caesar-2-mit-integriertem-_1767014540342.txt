@@ -1,0 +1,111 @@
+### **Projektbeschreibung: Tooluse Caesar 2 mit integriertem MCP-Server**
+
+**Projektname:** _Tooluse Caesar 2_
+**Ziel:** Eine **selbstständige Replit-App**, die **Tools für LLM-Agenten** definiert, verwaltet und über eine **API mit Mistral-kompatiblen Function Calls** bereitstellt. Der **MCP-Server ist Teil der App** und stellt aktive Tools für Agenten bereit. **Jeder API-Aufruf erfordert den API-Key im URL-Pfad** – sonst wird eine **404** zurückgegeben.
+
+---
+
+### **1. Hintergrund & Motivation**
+
+- **Problem:** Es fehlt eine **einfache, webbasierte Umgebung**, um Tools für LLM-Agenten zu **definieren, zu testen und bereitzustellen** – **ohne lokales Setup** und mit **nahtloser Mistral-Integration**. Aktuelle Lösungen bieten nicht:
+    
+    - **Direkten Aufruf von Tools über ihre Definition** (inkl. Parameter) – weder in der UI noch per API.
+    - **Integrierten MCP-Server** in der gleichen App.
+    - **Strikte Einhaltung der Mistral Function Call Definition** für Agenten.
+    - **Sichere API-Pfade mit API-Key als Pflichtbestandteil**.
+- **Lösung:** Eine **Replit-basierte JavaScript-Anwendung**, die:
+    
+    - Tools **per UI oder API** über ihre **Definition + Parameter** aufruft.
+    - Einen **MCP-Server** enthält, der **aktive Tools im Mistral-Format** für Agenten bereitstellt.
+    - **Jeden API-Aufruf mit API-Key im Pfad** erzwingt (z. B. `/<api-key>/tools/...`).
+
+---
+
+### **2. Zielgruppe**
+
+- **Primär:** Entwickler:innen, die **Agenten-Workflows** mit **Mistral-kompatiblen Tools** prototypen.
+- **Sekundär:** Teams, die **LLM-gesteuerte Prozesse** testen und Tools zentral verwalten wollen.
+
+---
+
+### **3. Funktionale Anforderungen**
+
+#### **A. Tool-Definition & Aufruf**
+
+- **Metadaten (Mistral-kompatibel):**
+    - `name`, `description`, `parameters` (als JSON-Schema).
+- **HTTP-Request-Konfiguration:**
+    - Endpoint, Methode, Header, Body (für API-Calls).
+- **Preprocessing/Postprocessing:**
+    - JavaScript-Funktionen zur **Datenaufbereitung vor/nach dem API-Call**.
+- **Fake-Responses:**
+    - Statische Antworten für **schnelles Prototyping**.
+- **Aufruf in UI/API:**
+    - Tools werden **über ihren `name` + Parameter** aufgerufen (z. B. `executeTool("weather", {location: "Berlin"})`).
+
+#### **B. API-Schnittstelle**
+
+- **Tool-Aufruf:**
+    - **Pfad:** `/<api-key>/tools/<name>`
+    - **Methode:** `POST`
+    - **Body:** Parameter-Objekt (z. B. `{"location": "Berlin"}`).
+    - **Rückgabe:** Ergebnis des Tools (oder Fehler).
+- **Tool-Liste (für MCP):**
+    - **Pfad:** `/<api-key>/tools`
+    - **Methode:** `GET`
+    - **Rückgabe:** Liste **aktiver Tools im Mistral-Format** (für Agenten).
+- **404 bei fehlendem API-Key:**
+    - Jeder Pfad **ohne `<api-key>`** führt zu einer **404**.
+
+#### **C. MCP-Server (integriert in Replit-App)**
+
+- **Automatische Bereitstellung:**
+    - Stellt **aktive Tools** unter `/<api-key>/tools` im **Mistral-Format** bereit.
+- **Echtzeit-Synchronisation:**
+    - Agenten fragen **regelmäßig** die Tool-Liste ab.
+
+#### **D. UI-Funktionen**
+
+- **Tool-Editor:**
+    - Formular für **Mistral-kompatible Metadaten** + Code-Editor für Pre-/Postprocessing.
+- **Tool-Aufruf in UI:**
+    - Eingabefeld für **Tool-Name + Parameter** → Ausführung mit Anzeige des Ergebnisses.
+- **Aktivierungsmanagement:**
+    - Schalter zum **Aktivieren/Deaktivieren** von Tools.
+
+#### **E. Datenmanagement**
+
+- **Speicherung:**
+    - Tools in **JSON-Dateien** (Replit-DB).
+- **Statusverwaltung:**
+    - Liste aller Tools mit **Aktivierungsstatus**.
+
+---
+
+### **4. Use Cases**
+
+1. **Tool-Definition & Test:**
+    - Tool `weather` mit Parametern `location` definieren → in UI mit `{location: "Berlin"}` aufrufen.
+2. **API-Aufruf durch LLM:**
+    - LLM ruft `POST /<api-key>/tools/weather` mit `{"location": "Berlin"}` auf.
+3. **Agenten-Integration:**
+    - MCP-Server stellt `weather` im **Mistral-Format** bereit → Agent nutzt es via Function Call.
+
+---
+
+### **5. Technische Vorgaben**
+
+- **Mistral Function Call Definition:**
+    - Jedes Tool **muss** `name`, `description` und `parameters` (JSON-Schema) enthalten.
+- **API-Key im Pfad:**
+    - **Kein API-Key → 404** (keine Weiterleitung, keine Fehlermeldung).
+- **MCP-Server:**
+    - Läuft **in der gleichen Replit-App** und nutzt die **Tool-Liste aus der DB**.
+
+---
+
+### **6. Abgrenzung (Out of Scope)**
+
+- **Skalierung für Produktion.**
+- **Benutzerverwaltung** (nur API-Key-basierter Zugriff).
+- **Hosting außerhalb von Replit.**
