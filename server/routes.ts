@@ -418,6 +418,12 @@ export async function registerRoutes(
     }
   });
 
+  const defaultChainParameters = {
+    type: "object" as const,
+    properties: {},
+    required: [] as string[],
+  };
+
   app.post("/api/chains", requireAuth, async (req: Request, res: Response) => {
     try {
       const parsed = insertChainSchema.safeParse(req.body);
@@ -426,13 +432,24 @@ export async function registerRoutes(
         return;
       }
 
-      const existing = await storage.getChainByName(parsed.data.name);
-      if (existing) {
+      const existingChain = await storage.getChainByName(parsed.data.name);
+      if (existingChain) {
         res.status(409).json({ error: "Chain with this name already exists" });
         return;
       }
 
-      const chain = await storage.createChain(parsed.data);
+      const existingTool = await storage.getToolByName(parsed.data.name);
+      if (existingTool) {
+        res.status(409).json({ error: "A tool with this name already exists - chain names must be unique across tools and chains" });
+        return;
+      }
+
+      const chainData = {
+        ...parsed.data,
+        parameters: parsed.data.parameters || defaultChainParameters,
+      };
+
+      const chain = await storage.createChain(chainData);
       res.status(201).json(chain);
     } catch (error) {
       res.status(500).json({ error: "Failed to create chain" });
@@ -447,13 +464,24 @@ export async function registerRoutes(
         return;
       }
 
-      const existing = await storage.getChainByName(parsed.data.name);
-      if (existing && existing.id !== req.params.id) {
+      const existingChain = await storage.getChainByName(parsed.data.name);
+      if (existingChain && existingChain.id !== req.params.id) {
         res.status(409).json({ error: "Chain with this name already exists" });
         return;
       }
 
-      const chain = await storage.updateChain(req.params.id, parsed.data);
+      const existingTool = await storage.getToolByName(parsed.data.name);
+      if (existingTool) {
+        res.status(409).json({ error: "A tool with this name already exists - chain names must be unique across tools and chains" });
+        return;
+      }
+
+      const chainData = {
+        ...parsed.data,
+        parameters: parsed.data.parameters || defaultChainParameters,
+      };
+
+      const chain = await storage.updateChain(req.params.id, chainData);
       if (!chain) {
         res.status(404).json({ error: "Chain not found" });
         return;

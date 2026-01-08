@@ -7,8 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, Plus, Trash2, GripVertical, ArrowRight, Save, Play } from "lucide-react";
-import type { ToolChain, InsertChain, Tool, ChainStep } from "@shared/schema";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ArrowLeft, Plus, Trash2, GripVertical, ArrowRight, Save, Play, ChevronDown, ChevronRight } from "lucide-react";
+import type { ToolChain, InsertChain, Tool, ChainStep, ToolParameters } from "@shared/schema";
 
 interface ChainEditorProps {
   chain?: ToolChain;
@@ -23,11 +24,23 @@ interface StepConfig extends ChainStep {
   localId: string;
 }
 
+const emptyParameters: ToolParameters = {
+  type: "object",
+  properties: {},
+  required: []
+};
+
+const defaultParametersJson = JSON.stringify(emptyParameters, null, 2);
+
 export function ChainEditor({ chain, tools, onSave, onExecute, isSaving, isNew }: ChainEditorProps) {
   const [, setLocation] = useLocation();
   const [name, setName] = useState(chain?.name || "");
   const [description, setDescription] = useState(chain?.description || "");
   const [isActive, setIsActive] = useState(chain?.isActive ?? true);
+  const [parametersJson, setParametersJson] = useState(
+    chain?.parameters ? JSON.stringify(chain.parameters, null, 2) : defaultParametersJson
+  );
+  const [parametersOpen, setParametersOpen] = useState(false);
   const [steps, setSteps] = useState<StepConfig[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -67,6 +80,18 @@ export function ChainEditor({ chain, tools, onSave, onExecute, isSaving, isNew }
     }));
   };
 
+  const validateParameters = (json: string): ToolParameters | null => {
+    try {
+      const parsed = JSON.parse(json);
+      if (parsed.type === "object" && typeof parsed.properties === "object") {
+        return parsed as ToolParameters;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
     
@@ -78,6 +103,10 @@ export function ChainEditor({ chain, tools, onSave, onExecute, isSaving, isNew }
     
     if (!description.trim()) {
       newErrors.description = "Description is required";
+    }
+
+    if (parametersJson.trim() && !validateParameters(parametersJson)) {
+      newErrors.parameters = "Must be valid JSON Schema with type 'object' and 'properties'";
     }
     
     if (steps.length === 0) {
@@ -97,10 +126,13 @@ export function ChainEditor({ chain, tools, onSave, onExecute, isSaving, isNew }
   const handleSave = () => {
     if (!validate()) return;
     
+    const parsedParams = validateParameters(parametersJson) || emptyParameters;
+    
     const chainData: InsertChain = {
       name,
       description,
       isActive,
+      parameters: parsedParams,
       steps: steps.map(({ toolId, inputMapping, continueOnError }) => ({
         toolId,
         inputMapping: Object.keys(inputMapping || {}).length > 0 ? inputMapping : undefined,
@@ -190,6 +222,32 @@ export function ChainEditor({ chain, tools, onSave, onExecute, isSaving, isNew }
             />
             {errors.description && <p className="text-destructive text-sm">{errors.description}</p>}
           </div>
+
+          <Collapsible open={parametersOpen} onOpenChange={setParametersOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="w-full justify-start gap-2 p-0 h-auto">
+                {parametersOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <span className="font-medium">Parameters (JSON Schema)</span>
+                <span className="text-muted-foreground text-sm ml-2">
+                  Define input parameters for MCP/API calls
+                </span>
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3">
+              <Textarea
+                id="chain-parameters"
+                data-testid="input-chain-parameters"
+                placeholder='{"type": "object", "properties": {...}, "required": [...]}'
+                value={parametersJson}
+                onChange={(e) => setParametersJson(e.target.value)}
+                className={`font-mono text-sm min-h-[150px] ${errors.parameters ? "border-destructive" : ""}`}
+              />
+              {errors.parameters && <p className="text-destructive text-sm mt-1">{errors.parameters}</p>}
+              <p className="text-muted-foreground text-xs mt-2">
+                These parameters will be passed to the first step of the chain.
+              </p>
+            </CollapsibleContent>
+          </Collapsible>
         </CardContent>
       </Card>
 
