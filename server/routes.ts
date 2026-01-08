@@ -47,11 +47,9 @@ function executeSandboxedCode(
     }
     
     const fn = new Function(inputName, `
-      "use strict";
       const require = undefined;
       const process = undefined;
       const global = undefined;
-      const eval = undefined;
       const Function = undefined;
       const setTimeout = undefined;
       const setInterval = undefined;
