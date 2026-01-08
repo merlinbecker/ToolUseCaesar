@@ -122,11 +122,36 @@ export const toolExecutionSchema = z.object({
 
 export type ToolExecution = z.infer<typeof toolExecutionSchema>;
 
+export const executionLogSchema = z.object({
+  preprocessing: z.object({
+    originalParams: z.record(z.any()),
+    processedParams: z.record(z.any()),
+    codeExecuted: z.string().optional(),
+  }).optional(),
+  httpCall: z.object({
+    url: z.string(),
+    method: z.string(),
+    headers: z.record(z.string()),
+    body: z.string().optional(),
+    responseStatus: z.number().optional(),
+    responseBody: z.any().optional(),
+  }).optional(),
+  postprocessing: z.object({
+    rawResponse: z.any(),
+    processedResponse: z.any(),
+    codeExecuted: z.string().optional(),
+  }).optional(),
+  finalResult: z.any().optional(),
+});
+
+export type ExecutionLog = z.infer<typeof executionLogSchema>;
+
 export const toolExecutionResultSchema = z.object({
   success: z.boolean(),
   result: z.any().optional(),
   error: z.string().optional(),
   executionTime: z.number(),
+  executionLog: executionLogSchema.optional(),
 });
 
 export type ToolExecutionResult = z.infer<typeof toolExecutionResultSchema>;

@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, requireAuth, hashPassword } from "./auth";
 import { 
   insertToolSchema, insertChainSchema,
-  type MistralFunction, type ToolExecutionResult, type ChainExecutionResult, type Tool 
+  type MistralFunction, type ToolExecutionResult, type ChainExecutionResult, type Tool, type ExecutionLog 
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -80,13 +80,59 @@ function interpolateTemplate(template: string, params: Record<string, unknown>):
   });
 }
 
+function interpolateUrl(urlTemplate: string, params: Record<string, unknown>): string {
+  try {
+    const url = new URL(urlTemplate);
+    
+    url.pathname = url.pathname.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+      const value = params[key];
+      if (value === undefined) return "";
+      if (typeof value === "object") return encodeURIComponent(JSON.stringify(value));
+      return encodeURIComponent(String(value));
+    });
+    
+    const searchParams = new URLSearchParams();
+    url.searchParams.forEach((value, key) => {
+      const interpolatedValue = value.replace(/\{\{(\w+)\}\}/g, (_, paramKey) => {
+        const paramValue = params[paramKey];
+        if (paramValue === undefined) return "";
+        if (typeof paramValue === "object") return JSON.stringify(paramValue);
+        return String(paramValue);
+      });
+      searchParams.append(key, interpolatedValue);
+    });
+    
+    url.search = searchParams.toString();
+    return url.toString();
+  } catch {
+    return urlTemplate.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+      const value = params[key];
+      if (value === undefined) return "";
+      if (typeof value === "object") return encodeURIComponent(JSON.stringify(value));
+      return encodeURIComponent(String(value));
+    });
+  }
+}
+
 async function executeTool(tool: Tool, parameters: Record<string, unknown>): Promise<ToolExecutionResult> {
   const startTime = Date.now();
+  const executionLog: ExecutionLog = {};
   
   try {
     let processedParams = parameters;
+    
     if (tool.preprocessing) {
       processedParams = executePreprocessing(tool.preprocessing, parameters);
+      executionLog.preprocessing = {
+        originalParams: parameters,
+        processedParams: processedParams,
+        codeExecuted: tool.preprocessing,
+      };
+    } else {
+      executionLog.preprocessing = {
+        originalParams: parameters,
+        processedParams: parameters,
+      };
     }
 
     let result: unknown;
@@ -97,6 +143,12 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
       } catch {
         result = tool.fakeResponse;
       }
+      executionLog.httpCall = {
+        url: "(Fake Response - no HTTP call)",
+        method: "FAKE",
+        headers: {},
+        responseBody: result,
+      };
     } else if (tool.httpConfig?.endpoint) {
       try {
         const headers: Record<string, string> = {
@@ -109,34 +161,72 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
           body = interpolateTemplate(tool.httpConfig.bodyTemplate, processedParams);
         }
 
-        const response = await fetch(tool.httpConfig.endpoint, {
+        const interpolatedUrl = interpolateUrl(tool.httpConfig.endpoint, processedParams);
+
+        const response = await fetch(interpolatedUrl, {
           method: tool.httpConfig.method,
           headers,
           body,
         });
 
+        const responseStatus = response.status;
         result = await response.json();
+        
+        executionLog.httpCall = {
+          url: interpolatedUrl,
+          method: tool.httpConfig.method,
+          headers,
+          body,
+          responseStatus,
+          responseBody: result,
+        };
       } catch (error) {
         const executionTime = Date.now() - startTime;
+        executionLog.httpCall = {
+          url: tool.httpConfig.endpoint,
+          method: tool.httpConfig.method,
+          headers: { "Content-Type": "application/json", ...tool.httpConfig.headers },
+        };
         return {
           success: false,
           error: `HTTP request failed: ${error instanceof Error ? error.message : "Unknown error"}`,
           executionTime,
+          executionLog,
         };
       }
     } else {
       result = { message: "No endpoint configured and fake response disabled" };
+      executionLog.httpCall = {
+        url: "(No endpoint configured)",
+        method: "NONE",
+        headers: {},
+        responseBody: result,
+      };
     }
 
+    const rawResponse = result;
     if (tool.postprocessing) {
       result = executePostprocessing(tool.postprocessing, result);
+      executionLog.postprocessing = {
+        rawResponse,
+        processedResponse: result,
+        codeExecuted: tool.postprocessing,
+      };
+    } else {
+      executionLog.postprocessing = {
+        rawResponse,
+        processedResponse: rawResponse,
+      };
     }
+
+    executionLog.finalResult = result;
 
     const executionTime = Date.now() - startTime;
     return {
       success: true,
       result,
       executionTime,
+      executionLog,
     };
   } catch (error) {
     const executionTime = Date.now() - startTime;
@@ -144,6 +234,7 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
       executionTime,
+      executionLog,
     };
   }
 }
