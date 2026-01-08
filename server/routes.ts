@@ -127,8 +127,9 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
   try {
     let processedParams = parameters;
     
-    if (tool.preprocessing) {
-      processedParams = executePreprocessing(tool.preprocessing, parameters);
+    const hasPreprocessing = tool.preprocessing && tool.preprocessing.trim() !== "";
+    if (hasPreprocessing) {
+      processedParams = executePreprocessing(tool.preprocessing!, parameters);
       executionLog.preprocessing = {
         originalParams: parameters,
         processedParams: processedParams,
@@ -143,7 +144,17 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
 
     let result: unknown;
 
-    if (tool.useFakeResponse && tool.fakeResponse) {
+    const shouldExecuteHttp = tool.useHttpRequest !== false;
+
+    if (!shouldExecuteHttp) {
+      result = processedParams;
+      executionLog.httpCall = {
+        url: "(HTTP disabled - using preprocessed params)",
+        method: "NONE",
+        headers: {},
+        responseBody: result,
+      };
+    } else if (tool.useFakeResponse && tool.fakeResponse) {
       try {
         result = JSON.parse(tool.fakeResponse);
       } catch {
@@ -211,8 +222,9 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
     }
 
     const rawResponse = result;
-    if (tool.postprocessing) {
-      result = executePostprocessing(tool.postprocessing, result);
+    const hasPostprocessing = tool.postprocessing && tool.postprocessing.trim() !== "";
+    if (hasPostprocessing) {
+      result = executePostprocessing(tool.postprocessing!, result);
       executionLog.postprocessing = {
         rawResponse,
         processedResponse: result,

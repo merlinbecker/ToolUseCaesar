@@ -43,6 +43,7 @@ export const tools = pgTable("tools", {
   postprocessing: text("postprocessing"),
   fakeResponse: text("fake_response"),
   useFakeResponse: boolean("use_fake_response").default(false).notNull(),
+  useHttpRequest: boolean("use_http_request").default(true).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   executionCount: integer("execution_count").default(0).notNull(),
   lastModified: timestamp("last_modified").defaultNow().notNull(),
