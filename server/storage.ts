@@ -17,10 +17,8 @@ const defaultChainParameters: ToolParameters = {
 };
 
 function normalizeChainParameters(chain: ToolChain): ToolChain {
-  if (!chain.parameters || chain.parameters.type !== "object" || !chain.parameters.properties) {
-    return { ...chain, parameters: defaultChainParameters };
-  }
-  return chain;
+  const normalized = normalizeInputParameters(chain.parameters);
+  return { ...chain, parameters: normalized };
 }
 
 function normalizeInputParameters(params: ToolParameters | undefined | null): ToolParameters {
@@ -41,15 +39,19 @@ function normalizeInputParameters(params: ToolParameters | undefined | null): To
     }
   }
   
+  const propertyKeys = new Set(Object.keys(cleanProperties));
   const cleanRequired = Array.isArray(params.required) 
-    ? params.required.filter((r): r is string => typeof r === "string")
+    ? params.required.filter((r): r is string => typeof r === "string" && propertyKeys.has(r))
     : [];
   
-  return {
+  const result: ToolParameters = {
+    ...params,
     type: "object",
     properties: cleanProperties as ToolParameters["properties"],
     required: cleanRequired,
   };
+  
+  return result;
 }
 
 export interface IStorage {
