@@ -133,7 +133,7 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
       executionLog.preprocessing = {
         originalParams: parameters,
         processedParams: processedParams,
-        codeExecuted: tool.preprocessing,
+        codeExecuted: tool.preprocessing ?? undefined,
       };
     } else {
       executionLog.preprocessing = {
@@ -146,15 +146,7 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
 
     const shouldExecuteHttp = tool.useHttpRequest !== false;
 
-    if (!shouldExecuteHttp) {
-      result = processedParams;
-      executionLog.httpCall = {
-        url: "(HTTP disabled - using preprocessed params)",
-        method: "NONE",
-        headers: {},
-        responseBody: result,
-      };
-    } else if (tool.useFakeResponse && tool.fakeResponse) {
+    if (tool.useFakeResponse && tool.fakeResponse) {
       try {
         result = JSON.parse(tool.fakeResponse);
       } catch {
@@ -163,6 +155,14 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
       executionLog.httpCall = {
         url: "(Fake Response - no HTTP call)",
         method: "FAKE",
+        headers: {},
+        responseBody: result,
+      };
+    } else if (!shouldExecuteHttp) {
+      result = processedParams;
+      executionLog.httpCall = {
+        url: "(HTTP disabled - using preprocessed params)",
+        method: "NONE",
         headers: {},
         responseBody: result,
       };
@@ -228,7 +228,7 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
       executionLog.postprocessing = {
         rawResponse,
         processedResponse: result,
-        codeExecuted: tool.postprocessing,
+        codeExecuted: tool.postprocessing ?? undefined,
       };
     } else {
       executionLog.postprocessing = {
