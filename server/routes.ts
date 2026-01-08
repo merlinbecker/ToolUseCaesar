@@ -19,7 +19,7 @@ function executeSandboxedCode(
   code: string,
   inputName: string,
   input: unknown,
-  expectedFnName: string,
+  contextName: string,
   timeout: number = 5000
 ): unknown {
   if (!code || code.trim() === "") return input;
@@ -33,6 +33,19 @@ function executeSandboxedCode(
       .replace(/eval\s*\(/g, "/* disabled eval */")
       .replace(/Function\s*\(/g, "/* disabled Function */");
     
+    const expectedFnName = contextName === "preprocess" ? "preprocess" : "postprocess";
+    const isLegacyFormat = new RegExp(`function\\s+${expectedFnName}\\s*\\(`).test(safeCode);
+    
+    let executableCode: string;
+    if (isLegacyFormat) {
+      executableCode = `
+        ${safeCode}
+        return ${expectedFnName}(${inputName});
+      `;
+    } else {
+      executableCode = safeCode;
+    }
+    
     const fn = new Function(inputName, `
       "use strict";
       const require = undefined;
@@ -44,18 +57,13 @@ function executeSandboxedCode(
       const setInterval = undefined;
       const fetch = undefined;
       
-      ${safeCode}
-      
-      if (typeof ${expectedFnName} === 'function') {
-        return ${expectedFnName}(${inputName});
-      }
-      return ${inputName};
+      ${executableCode}
     `);
     
     const result = fn(JSON.parse(JSON.stringify(input)));
     return result !== undefined ? result : input;
   } catch (error) {
-    console.error(`${expectedFnName} execution error:`, error);
+    console.error(`${contextName} execution error:`, error);
     return input;
   }
 }
