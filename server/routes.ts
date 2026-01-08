@@ -708,9 +708,9 @@ export async function registerRoutes(
       const chainFunctions: MistralFunction[] = chains.map((chain) => ({
         type: "function",
         function: {
-          name: `chain_${chain.name}`,
-          description: `[Chain] ${chain.description}`,
-          parameters: {
+          name: chain.name,
+          description: chain.description,
+          parameters: chain.parameters ?? {
             type: "object",
             properties: {},
             required: [],
@@ -734,23 +734,30 @@ export async function registerRoutes(
       }
 
       const toolName = req.params.toolName;
-      
-      if (toolName.startsWith("chain_")) {
-        const chainName = toolName.slice(6);
-        const chain = await storage.getChainByName(chainName);
-        if (!chain) {
-          res.status(404).json({ error: "Chain not found" });
+      const parameters = (req.body && typeof req.body === "object" && !Array.isArray(req.body)) 
+        ? req.body as Record<string, unknown>
+        : {};
+
+      const tool = await storage.getToolByName(toolName);
+      if (tool) {
+        if (!tool.isActive) {
+          res.status(403).json({ error: "Tool is not active" });
           return;
         }
 
+        const result = await executeTool(tool, parameters);
+        await storage.incrementExecutionCount(tool.id);
+
+        res.json(result.result);
+        return;
+      }
+
+      const chain = await storage.getChainByName(toolName);
+      if (chain) {
         if (!chain.isActive) {
           res.status(403).json({ error: "Chain is not active" });
           return;
         }
-
-        const parameters = (req.body && typeof req.body === "object" && !Array.isArray(req.body)) 
-          ? req.body as Record<string, unknown>
-          : {};
 
         const results: ChainExecutionResult["results"] = [];
         let previousResult: unknown = parameters;
@@ -758,9 +765,9 @@ export async function registerRoutes(
 
         for (let i = 0; i < chain.steps.length; i++) {
           const step = chain.steps[i];
-          const tool = await storage.getTool(step.toolId);
+          const stepTool = await storage.getTool(step.toolId);
           
-          if (!tool) {
+          if (!stepTool) {
             results.push({
               stepIndex: i,
               toolId: step.toolId,
@@ -804,13 +811,13 @@ export async function registerRoutes(
             stepParams = parameters;
           }
 
-          const stepResult = await executeTool(tool, stepParams);
-          await storage.incrementExecutionCount(tool.id);
+          const stepResult = await executeTool(stepTool, stepParams);
+          await storage.incrementExecutionCount(stepTool.id);
 
           results.push({
             stepIndex: i,
-            toolId: tool.id,
-            toolName: tool.name,
+            toolId: stepTool.id,
+            toolName: stepTool.name,
             success: stepResult.success,
             result: stepResult.result,
             error: stepResult.error,
@@ -831,25 +838,7 @@ export async function registerRoutes(
         return;
       }
 
-      const tool = await storage.getToolByName(toolName);
-      if (!tool) {
-        res.status(404).json({ error: "Tool not found" });
-        return;
-      }
-
-      if (!tool.isActive) {
-        res.status(403).json({ error: "Tool is not active" });
-        return;
-      }
-
-      const parameters = (req.body && typeof req.body === "object" && !Array.isArray(req.body)) 
-        ? req.body as Record<string, unknown>
-        : {};
-
-      const result = await executeTool(tool, parameters);
-      await storage.incrementExecutionCount(tool.id);
-
-      res.json(result.result);
+      res.status(404).json({ error: "Tool or chain not found" });
     } catch (error) {
       res.status(500).json({
         error: error instanceof Error ? error.message : "Unknown error",

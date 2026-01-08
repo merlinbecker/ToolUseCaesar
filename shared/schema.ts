@@ -62,6 +62,7 @@ export const toolChains = pgTable("tool_chains", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").unique().notNull(),
   description: text("description").notNull(),
+  parameters: jsonb("parameters").$type<ToolParameters>(),
   steps: jsonb("steps").notNull().$type<ChainStep[]>(),
   isActive: boolean("is_active").default(true).notNull(),
   executionCount: integer("execution_count").default(0).notNull(),
@@ -94,6 +95,7 @@ export const insertToolSchema = createInsertSchema(tools).omit({ id: true, execu
 export const insertChainSchema = createInsertSchema(toolChains).omit({ id: true, executionCount: true, lastModified: true, createdAt: true }).extend({
   name: z.string().min(1, "Name is required").regex(/^[a-z_][a-z0-9_-]*$/i, "Name must be alphanumeric with underscores or hyphens"),
   description: z.string().min(1, "Description is required"),
+  parameters: toolParametersSchema.optional(),
   steps: z.array(chainStepSchema).min(1, "At least one step is required"),
 });
 
