@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, requireAuth, hashPassword } from "./auth";
 import { 
   insertToolSchema, insertChainSchema,
-  type MistralFunction, type ToolExecutionResult, type ChainExecutionResult, type Tool 
+  type MistralFunction, type ToolExecutionResult, type ChainExecutionResult, type Tool, type ExecutionLog 
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -19,7 +19,7 @@ function executeSandboxedCode(
   code: string,
   inputName: string,
   input: unknown,
-  expectedFnName: string,
+  contextName: string,
   timeout: number = 5000
 ): unknown {
   if (!code || code.trim() === "") return input;
@@ -33,29 +33,35 @@ function executeSandboxedCode(
       .replace(/eval\s*\(/g, "/* disabled eval */")
       .replace(/Function\s*\(/g, "/* disabled Function */");
     
+    const expectedFnName = contextName === "preprocess" ? "preprocess" : "postprocess";
+    const isLegacyFormat = new RegExp(`function\\s+${expectedFnName}\\s*\\(`).test(safeCode);
+    
+    let executableCode: string;
+    if (isLegacyFormat) {
+      executableCode = `
+        ${safeCode}
+        return ${expectedFnName}(${inputName});
+      `;
+    } else {
+      executableCode = safeCode;
+    }
+    
     const fn = new Function(inputName, `
-      "use strict";
       const require = undefined;
       const process = undefined;
       const global = undefined;
-      const eval = undefined;
       const Function = undefined;
       const setTimeout = undefined;
       const setInterval = undefined;
       const fetch = undefined;
       
-      ${safeCode}
-      
-      if (typeof ${expectedFnName} === 'function') {
-        return ${expectedFnName}(${inputName});
-      }
-      return ${inputName};
+      ${executableCode}
     `);
     
     const result = fn(JSON.parse(JSON.stringify(input)));
     return result !== undefined ? result : input;
   } catch (error) {
-    console.error(`${expectedFnName} execution error:`, error);
+    console.error(`${contextName} execution error:`, error);
     return input;
   }
 }
@@ -80,16 +86,65 @@ function interpolateTemplate(template: string, params: Record<string, unknown>):
   });
 }
 
+function interpolateUrl(urlTemplate: string, params: Record<string, unknown>): string {
+  try {
+    const url = new URL(urlTemplate);
+    
+    url.pathname = url.pathname.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+      const value = params[key];
+      if (value === undefined) return "";
+      if (typeof value === "object") return encodeURIComponent(JSON.stringify(value));
+      return encodeURIComponent(String(value));
+    });
+    
+    const searchParams = new URLSearchParams();
+    url.searchParams.forEach((value, key) => {
+      const interpolatedValue = value.replace(/\{\{(\w+)\}\}/g, (_, paramKey) => {
+        const paramValue = params[paramKey];
+        if (paramValue === undefined) return "";
+        if (typeof paramValue === "object") return JSON.stringify(paramValue);
+        return String(paramValue);
+      });
+      searchParams.append(key, interpolatedValue);
+    });
+    
+    url.search = searchParams.toString();
+    return url.toString();
+  } catch {
+    return urlTemplate.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+      const value = params[key];
+      if (value === undefined) return "";
+      if (typeof value === "object") return encodeURIComponent(JSON.stringify(value));
+      return encodeURIComponent(String(value));
+    });
+  }
+}
+
 async function executeTool(tool: Tool, parameters: Record<string, unknown>): Promise<ToolExecutionResult> {
   const startTime = Date.now();
+  const executionLog: ExecutionLog = {};
   
   try {
     let processedParams = parameters;
-    if (tool.preprocessing) {
-      processedParams = executePreprocessing(tool.preprocessing, parameters);
+    
+    const hasPreprocessing = tool.preprocessing && tool.preprocessing.trim() !== "";
+    if (hasPreprocessing) {
+      processedParams = executePreprocessing(tool.preprocessing!, parameters);
+      executionLog.preprocessing = {
+        originalParams: parameters,
+        processedParams: processedParams,
+        codeExecuted: tool.preprocessing ?? undefined,
+      };
+    } else {
+      executionLog.preprocessing = {
+        originalParams: parameters,
+        processedParams: parameters,
+      };
     }
 
     let result: unknown;
+
+    const shouldExecuteHttp = tool.useHttpRequest !== false;
 
     if (tool.useFakeResponse && tool.fakeResponse) {
       try {
@@ -97,6 +152,20 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
       } catch {
         result = tool.fakeResponse;
       }
+      executionLog.httpCall = {
+        url: "(Fake Response - no HTTP call)",
+        method: "FAKE",
+        headers: {},
+        responseBody: result,
+      };
+    } else if (!shouldExecuteHttp) {
+      result = processedParams;
+      executionLog.httpCall = {
+        url: "(HTTP disabled - using preprocessed params)",
+        method: "NONE",
+        headers: {},
+        responseBody: result,
+      };
     } else if (tool.httpConfig?.endpoint) {
       try {
         const headers: Record<string, string> = {
@@ -109,34 +178,73 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
           body = interpolateTemplate(tool.httpConfig.bodyTemplate, processedParams);
         }
 
-        const response = await fetch(tool.httpConfig.endpoint, {
+        const interpolatedUrl = interpolateUrl(tool.httpConfig.endpoint, processedParams);
+
+        const response = await fetch(interpolatedUrl, {
           method: tool.httpConfig.method,
           headers,
           body,
         });
 
+        const responseStatus = response.status;
         result = await response.json();
+        
+        executionLog.httpCall = {
+          url: interpolatedUrl,
+          method: tool.httpConfig.method,
+          headers,
+          body,
+          responseStatus,
+          responseBody: result,
+        };
       } catch (error) {
         const executionTime = Date.now() - startTime;
+        executionLog.httpCall = {
+          url: tool.httpConfig.endpoint,
+          method: tool.httpConfig.method,
+          headers: { "Content-Type": "application/json", ...tool.httpConfig.headers },
+        };
         return {
           success: false,
           error: `HTTP request failed: ${error instanceof Error ? error.message : "Unknown error"}`,
           executionTime,
+          executionLog,
         };
       }
     } else {
       result = { message: "No endpoint configured and fake response disabled" };
+      executionLog.httpCall = {
+        url: "(No endpoint configured)",
+        method: "NONE",
+        headers: {},
+        responseBody: result,
+      };
     }
 
-    if (tool.postprocessing) {
-      result = executePostprocessing(tool.postprocessing, result);
+    const rawResponse = result;
+    const hasPostprocessing = tool.postprocessing && tool.postprocessing.trim() !== "";
+    if (hasPostprocessing) {
+      result = executePostprocessing(tool.postprocessing!, result);
+      executionLog.postprocessing = {
+        rawResponse,
+        processedResponse: result,
+        codeExecuted: tool.postprocessing ?? undefined,
+      };
+    } else {
+      executionLog.postprocessing = {
+        rawResponse,
+        processedResponse: rawResponse,
+      };
     }
+
+    executionLog.finalResult = result;
 
     const executionTime = Date.now() - startTime;
     return {
       success: true,
       result,
       executionTime,
+      executionLog,
     };
   } catch (error) {
     const executionTime = Date.now() - startTime;
@@ -144,6 +252,7 @@ async function executeTool(tool: Tool, parameters: Record<string, unknown>): Pro
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
       executionTime,
+      executionLog,
     };
   }
 }
@@ -309,6 +418,12 @@ export async function registerRoutes(
     }
   });
 
+  const defaultChainParameters = {
+    type: "object" as const,
+    properties: {},
+    required: [] as string[],
+  };
+
   app.post("/api/chains", requireAuth, async (req: Request, res: Response) => {
     try {
       const parsed = insertChainSchema.safeParse(req.body);
@@ -317,13 +432,24 @@ export async function registerRoutes(
         return;
       }
 
-      const existing = await storage.getChainByName(parsed.data.name);
-      if (existing) {
+      const existingChain = await storage.getChainByName(parsed.data.name);
+      if (existingChain) {
         res.status(409).json({ error: "Chain with this name already exists" });
         return;
       }
 
-      const chain = await storage.createChain(parsed.data);
+      const existingTool = await storage.getToolByName(parsed.data.name);
+      if (existingTool) {
+        res.status(409).json({ error: "A tool with this name already exists - chain names must be unique across tools and chains" });
+        return;
+      }
+
+      const chainData = {
+        ...parsed.data,
+        parameters: parsed.data.parameters || defaultChainParameters,
+      };
+
+      const chain = await storage.createChain(chainData);
       res.status(201).json(chain);
     } catch (error) {
       res.status(500).json({ error: "Failed to create chain" });
@@ -338,13 +464,24 @@ export async function registerRoutes(
         return;
       }
 
-      const existing = await storage.getChainByName(parsed.data.name);
-      if (existing && existing.id !== req.params.id) {
+      const existingChain = await storage.getChainByName(parsed.data.name);
+      if (existingChain && existingChain.id !== req.params.id) {
         res.status(409).json({ error: "Chain with this name already exists" });
         return;
       }
 
-      const chain = await storage.updateChain(req.params.id, parsed.data);
+      const existingTool = await storage.getToolByName(parsed.data.name);
+      if (existingTool) {
+        res.status(409).json({ error: "A tool with this name already exists - chain names must be unique across tools and chains" });
+        return;
+      }
+
+      const chainData = {
+        ...parsed.data,
+        parameters: parsed.data.parameters || defaultChainParameters,
+      };
+
+      const chain = await storage.updateChain(req.params.id, chainData);
       if (!chain) {
         res.status(404).json({ error: "Chain not found" });
         return;
@@ -599,9 +736,9 @@ export async function registerRoutes(
       const chainFunctions: MistralFunction[] = chains.map((chain) => ({
         type: "function",
         function: {
-          name: `chain_${chain.name}`,
-          description: `[Chain] ${chain.description}`,
-          parameters: {
+          name: chain.name,
+          description: chain.description,
+          parameters: chain.parameters ?? {
             type: "object",
             properties: {},
             required: [],
@@ -625,23 +762,30 @@ export async function registerRoutes(
       }
 
       const toolName = req.params.toolName;
-      
-      if (toolName.startsWith("chain_")) {
-        const chainName = toolName.slice(6);
-        const chain = await storage.getChainByName(chainName);
-        if (!chain) {
-          res.status(404).json({ error: "Chain not found" });
+      const parameters = (req.body && typeof req.body === "object" && !Array.isArray(req.body)) 
+        ? req.body as Record<string, unknown>
+        : {};
+
+      const tool = await storage.getToolByName(toolName);
+      if (tool) {
+        if (!tool.isActive) {
+          res.status(403).json({ error: "Tool is not active" });
           return;
         }
 
+        const result = await executeTool(tool, parameters);
+        await storage.incrementExecutionCount(tool.id);
+
+        res.json(result.result);
+        return;
+      }
+
+      const chain = await storage.getChainByName(toolName);
+      if (chain) {
         if (!chain.isActive) {
           res.status(403).json({ error: "Chain is not active" });
           return;
         }
-
-        const parameters = (req.body && typeof req.body === "object" && !Array.isArray(req.body)) 
-          ? req.body as Record<string, unknown>
-          : {};
 
         const results: ChainExecutionResult["results"] = [];
         let previousResult: unknown = parameters;
@@ -649,9 +793,9 @@ export async function registerRoutes(
 
         for (let i = 0; i < chain.steps.length; i++) {
           const step = chain.steps[i];
-          const tool = await storage.getTool(step.toolId);
+          const stepTool = await storage.getTool(step.toolId);
           
-          if (!tool) {
+          if (!stepTool) {
             results.push({
               stepIndex: i,
               toolId: step.toolId,
@@ -695,13 +839,13 @@ export async function registerRoutes(
             stepParams = parameters;
           }
 
-          const stepResult = await executeTool(tool, stepParams);
-          await storage.incrementExecutionCount(tool.id);
+          const stepResult = await executeTool(stepTool, stepParams);
+          await storage.incrementExecutionCount(stepTool.id);
 
           results.push({
             stepIndex: i,
-            toolId: tool.id,
-            toolName: tool.name,
+            toolId: stepTool.id,
+            toolName: stepTool.name,
             success: stepResult.success,
             result: stepResult.result,
             error: stepResult.error,
@@ -722,25 +866,7 @@ export async function registerRoutes(
         return;
       }
 
-      const tool = await storage.getToolByName(toolName);
-      if (!tool) {
-        res.status(404).json({ error: "Tool not found" });
-        return;
-      }
-
-      if (!tool.isActive) {
-        res.status(403).json({ error: "Tool is not active" });
-        return;
-      }
-
-      const parameters = (req.body && typeof req.body === "object" && !Array.isArray(req.body)) 
-        ? req.body as Record<string, unknown>
-        : {};
-
-      const result = await executeTool(tool, parameters);
-      await storage.incrementExecutionCount(tool.id);
-
-      res.json(result.result);
+      res.status(404).json({ error: "Tool or chain not found" });
     } catch (error) {
       res.status(500).json({
         error: error instanceof Error ? error.message : "Unknown error",

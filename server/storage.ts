@@ -3,11 +3,56 @@ import {
   type User, type InsertUser, 
   type Tool, type InsertTool, 
   type ToolChain, type InsertChain,
-  type ApiKeyConfig 
+  type ApiKeyConfig,
+  type ToolParameters
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
+
+const defaultChainParameters: ToolParameters = {
+  type: "object",
+  properties: {},
+  required: [],
+};
+
+function normalizeChainParameters(chain: ToolChain): ToolChain {
+  const normalized = normalizeInputParameters(chain.parameters);
+  return { ...chain, parameters: normalized };
+}
+
+function normalizeInputParameters(params: ToolParameters | undefined | null): ToolParameters {
+  if (
+    !params || 
+    params.type !== "object" || 
+    typeof params.properties !== "object" ||
+    params.properties === null ||
+    Array.isArray(params.properties)
+  ) {
+    return defaultChainParameters;
+  }
+  
+  const cleanProperties: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(params.properties)) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      cleanProperties[key] = value;
+    }
+  }
+  
+  const propertyKeys = new Set(Object.keys(cleanProperties));
+  const cleanRequired = Array.isArray(params.required) 
+    ? params.required.filter((r): r is string => typeof r === "string" && propertyKeys.has(r))
+    : [];
+  
+  const result: ToolParameters = {
+    ...params,
+    type: "object",
+    properties: cleanProperties as ToolParameters["properties"],
+    required: cleanRequired,
+  };
+  
+  return result;
+}
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -120,34 +165,43 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllChains(): Promise<ToolChain[]> {
-    return db.select().from(toolChains).orderBy(desc(toolChains.lastModified));
+    const chains = await db.select().from(toolChains).orderBy(desc(toolChains.lastModified));
+    return chains.map(normalizeChainParameters);
   }
 
   async getChain(id: string): Promise<ToolChain | undefined> {
     const [chain] = await db.select().from(toolChains).where(eq(toolChains.id, id));
-    return chain || undefined;
+    return chain ? normalizeChainParameters(chain) : undefined;
   }
 
   async getChainByName(name: string): Promise<ToolChain | undefined> {
     const [chain] = await db.select().from(toolChains).where(eq(toolChains.name, name));
-    return chain || undefined;
+    return chain ? normalizeChainParameters(chain) : undefined;
   }
 
   async createChain(insertChain: InsertChain): Promise<ToolChain> {
     const [chain] = await db.insert(toolChains).values({
       ...insertChain,
+      parameters: normalizeInputParameters(insertChain.parameters),
       lastModified: new Date(),
     }).returning();
-    return chain;
+    return normalizeChainParameters(chain);
   }
 
   async updateChain(id: string, updates: Partial<InsertChain>): Promise<ToolChain | undefined> {
+    const updateData: Record<string, unknown> = {
+      ...updates,
+      lastModified: new Date(),
+    };
+    if ('parameters' in updates) {
+      updateData.parameters = normalizeInputParameters(updates.parameters);
+    }
     const [chain] = await db
       .update(toolChains)
-      .set({ ...updates, lastModified: new Date() })
+      .set(updateData)
       .where(eq(toolChains.id, id))
       .returning();
-    return chain || undefined;
+    return chain ? normalizeChainParameters(chain) : undefined;
   }
 
   async deleteChain(id: string): Promise<boolean> {
@@ -166,7 +220,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getActiveChains(): Promise<ToolChain[]> {
-    return db.select().from(toolChains).where(eq(toolChains.isActive, true));
+    const chains = await db.select().from(toolChains).where(eq(toolChains.isActive, true));
+    return chains.map(normalizeChainParameters);
   }
 
   async getApiKey(): Promise<ApiKeyConfig> {

@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, Play, Copy, Check, Clock, AlertCircle, CheckCircle } from "lucide-react";
+import { ChevronLeft, Play, Copy, Check, Clock, AlertCircle, CheckCircle, ChevronDown, ChevronRight, FileCode, Globe, ArrowRight, Sparkles } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { Tool, ToolExecutionResult } from "@shared/schema";
 
 interface ToolExecuteProps {
@@ -14,6 +15,181 @@ interface ToolExecuteProps {
   onExecute: (params: Record<string, unknown>) => void;
   isExecuting: boolean;
   result?: ToolExecutionResult;
+}
+
+function ExecutionLogSection({ result }: { result: ToolExecutionResult }) {
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    preprocessing: true,
+    httpCall: true,
+    postprocessing: true,
+    finalResult: true,
+  });
+
+  const toggleSection = (section: string) => {
+    setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const log = result.executionLog;
+  if (!log) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <FileCode className="h-5 w-5" />
+          Execution Log
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Collapsible open={openSections.preprocessing} onOpenChange={() => toggleSection("preprocessing")}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-start gap-2 font-semibold" data-testid="button-toggle-preprocessing">
+              {openSections.preprocessing ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              <ArrowRight className="h-4 w-4 text-blue-500" />
+              1. Preprocessing
+              {log.preprocessing?.codeExecuted && (
+                <Badge variant="secondary" className="ml-2">Code executed</Badge>
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pl-8 pt-2 space-y-2">
+            {log.preprocessing && (
+              <>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Original Parameters:</p>
+                  <pre className="font-mono text-xs p-2 bg-muted rounded-md overflow-auto max-h-32">
+                    <code data-testid="text-original-params">{JSON.stringify(log.preprocessing.originalParams, null, 2)}</code>
+                  </pre>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Processed Parameters:</p>
+                  <pre className="font-mono text-xs p-2 bg-muted rounded-md overflow-auto max-h-32">
+                    <code data-testid="text-processed-params">{JSON.stringify(log.preprocessing.processedParams, null, 2)}</code>
+                  </pre>
+                </div>
+                {log.preprocessing.codeExecuted && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Preprocessing Code:</p>
+                    <pre className="font-mono text-xs p-2 bg-muted rounded-md overflow-auto max-h-32">
+                      <code>{log.preprocessing.codeExecuted}</code>
+                    </pre>
+                  </div>
+                )}
+              </>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+
+        <Collapsible open={openSections.httpCall} onOpenChange={() => toggleSection("httpCall")}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-start gap-2 font-semibold" data-testid="button-toggle-httpcall">
+              {openSections.httpCall ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              <Globe className="h-4 w-4 text-green-500" />
+              2. HTTP Call
+              {log.httpCall?.responseStatus && (
+                <Badge 
+                  variant={log.httpCall.responseStatus >= 200 && log.httpCall.responseStatus < 300 ? "default" : "destructive"}
+                  className="ml-2"
+                >
+                  {log.httpCall.responseStatus}
+                </Badge>
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pl-8 pt-2 space-y-2">
+            {log.httpCall && (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline">{log.httpCall.method}</Badge>
+                  <code className="text-xs bg-muted px-2 py-1 rounded break-all" data-testid="text-http-url">
+                    {log.httpCall.url}
+                  </code>
+                </div>
+                {Object.keys(log.httpCall.headers || {}).length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Headers:</p>
+                    <pre className="font-mono text-xs p-2 bg-muted rounded-md overflow-auto max-h-24">
+                      <code>{JSON.stringify(log.httpCall.headers, null, 2)}</code>
+                    </pre>
+                  </div>
+                )}
+                {log.httpCall.body && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Request Body:</p>
+                    <pre className="font-mono text-xs p-2 bg-muted rounded-md overflow-auto max-h-32">
+                      <code data-testid="text-http-body">{log.httpCall.body}</code>
+                    </pre>
+                  </div>
+                )}
+                {log.httpCall.responseBody !== undefined && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Response Body:</p>
+                    <pre className="font-mono text-xs p-2 bg-muted rounded-md overflow-auto max-h-48">
+                      <code data-testid="text-http-response">{JSON.stringify(log.httpCall.responseBody, null, 2)}</code>
+                    </pre>
+                  </div>
+                )}
+              </>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+
+        <Collapsible open={openSections.postprocessing} onOpenChange={() => toggleSection("postprocessing")}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-start gap-2 font-semibold" data-testid="button-toggle-postprocessing">
+              {openSections.postprocessing ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              <ArrowRight className="h-4 w-4 text-orange-500" />
+              3. Postprocessing
+              {log.postprocessing?.codeExecuted && (
+                <Badge variant="secondary" className="ml-2">Code executed</Badge>
+              )}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pl-8 pt-2 space-y-2">
+            {log.postprocessing && (
+              <>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Raw Response:</p>
+                  <pre className="font-mono text-xs p-2 bg-muted rounded-md overflow-auto max-h-32">
+                    <code data-testid="text-raw-response">{JSON.stringify(log.postprocessing.rawResponse, null, 2)}</code>
+                  </pre>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1">Processed Response:</p>
+                  <pre className="font-mono text-xs p-2 bg-muted rounded-md overflow-auto max-h-32">
+                    <code data-testid="text-processed-response">{JSON.stringify(log.postprocessing.processedResponse, null, 2)}</code>
+                  </pre>
+                </div>
+                {log.postprocessing.codeExecuted && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Postprocessing Code:</p>
+                    <pre className="font-mono text-xs p-2 bg-muted rounded-md overflow-auto max-h-32">
+                      <code>{log.postprocessing.codeExecuted}</code>
+                    </pre>
+                  </div>
+                )}
+              </>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+
+        <Collapsible open={openSections.finalResult} onOpenChange={() => toggleSection("finalResult")}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="w-full justify-start gap-2 font-semibold" data-testid="button-toggle-finalresult">
+              {openSections.finalResult ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              <Sparkles className="h-4 w-4 text-purple-500" />
+              4. Final Result
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pl-8 pt-2">
+            <pre className="font-mono text-xs p-2 bg-muted rounded-md overflow-auto max-h-48">
+              <code data-testid="text-final-result">{JSON.stringify(log.finalResult, null, 2)}</code>
+            </pre>
+          </CollapsibleContent>
+        </Collapsible>
+      </CardContent>
+    </Card>
+  );
 }
 
 export function ToolExecute({ tool, isLoading, onExecute, isExecuting, result }: ToolExecuteProps) {
@@ -298,6 +474,10 @@ export function ToolExecute({ tool, isLoading, onExecute, isExecuting, result }:
               </pre>
             </CardContent>
           </Card>
+
+          {result && result.executionLog && (
+            <ExecutionLogSection result={result} />
+          )}
         </div>
       </div>
     </div>

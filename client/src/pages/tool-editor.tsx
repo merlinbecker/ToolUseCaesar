@@ -36,6 +36,7 @@ const formSchema = z.object({
   postprocessing: z.string().optional(),
   fakeResponse: z.string().optional(),
   useFakeResponse: z.boolean(),
+  useHttpRequest: z.boolean(),
   isActive: z.boolean(),
 });
 
@@ -79,6 +80,7 @@ export function ToolEditor({ tool, onSave, onExecute, isSaving, isNew = false }:
       postprocessing: tool?.postprocessing || "",
       fakeResponse: tool?.fakeResponse || "",
       useFakeResponse: tool?.useFakeResponse || false,
+      useHttpRequest: tool?.useHttpRequest ?? true,
       isActive: tool?.isActive ?? true,
     },
   });
@@ -121,6 +123,7 @@ export function ToolEditor({ tool, onSave, onExecute, isSaving, isNew = false }:
         postprocessing: data.postprocessing,
         fakeResponse: data.fakeResponse,
         useFakeResponse: data.useFakeResponse,
+        useHttpRequest: data.useHttpRequest,
         isActive: data.isActive,
       };
 
@@ -225,7 +228,7 @@ export function ToolEditor({ tool, onSave, onExecute, isSaving, isNew = false }:
                     )}
                   />
 
-                  <div className="flex items-center justify-between gap-4 pt-2">
+                  <div className="flex items-center justify-between gap-4 pt-2 flex-wrap">
                     <FormField
                       control={form.control}
                       name="isActive"
@@ -239,6 +242,22 @@ export function ToolEditor({ tool, onSave, onExecute, isSaving, isNew = false }:
                             />
                           </FormControl>
                           <FormLabel className="!mt-0">Active</FormLabel>
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="useHttpRequest"
+                      render={({ field }) => (
+                        <FormItem className="flex items-center gap-2">
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                              data-testid="switch-use-http"
+                            />
+                          </FormControl>
+                          <FormLabel className="!mt-0">HTTP Request</FormLabel>
                         </FormItem>
                       )}
                     />
