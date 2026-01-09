@@ -138,23 +138,29 @@ WebAssembly-basierte JavaScript-Engine mit vollständiger Sandbox-Isolation.
 
 **Beispiel-Code:**
 ```javascript
-import { loadQuickJs } from '@sebastianwessel/quickjs';
+import { loadQuickJs, type SandboxOptions } from '@sebastianwessel/quickjs';
 
 const { runSandboxed } = await loadQuickJs();
 
-const result = await runSandboxed(async ({ evalCode }) => {
-  return evalCode(`
-    function transform(data) {
-      return { ...data, processed: true };
-    }
-    transform(${JSON.stringify(inputData)})
-  `);
-}, {
+const options: SandboxOptions = {
   timeoutMs: 5000,
   memoryLimitMb: 8,
   allowFetch: false,
   allowFs: false
-});
+};
+
+const code = `
+  globalThis.inputData = ${JSON.stringify(inputData)};
+  function transform(data) {
+    return { ...data, processed: true };
+  }
+  transform(globalThis.inputData)
+`;
+
+const result = await runSandboxed(
+  async ({ evalCode }) => evalCode(code),
+  options
+);
 ```
 
 **Kosten:** Kostenlos (Open Source)  
@@ -305,17 +311,18 @@ npm install @sebastianwessel/quickjs
 **Datei:** `server/sandbox.ts` (neu)
 
 ```typescript
-import { loadQuickJs, QuickJsRuntime } from '@sebastianwessel/quickjs';
+import { loadQuickJs, type SandboxOptions } from '@sebastianwessel/quickjs';
 
-let quickJs: QuickJsRuntime | null = null;
+let runSandboxed: Awaited<ReturnType<typeof loadQuickJs>>['runSandboxed'] | null = null;
 
 /**
  * Initialisiert die QuickJS-Runtime (einmalig beim Server-Start)
  */
 export async function initializeSandbox() {
-  if (!quickJs) {
+  if (!runSandboxed) {
     try {
-      quickJs = await loadQuickJs();
+      const quickJs = await loadQuickJs();
+      runSandboxed = quickJs.runSandboxed;
       console.log('QuickJS sandbox initialized');
     } catch (error) {
       console.error('Failed to initialize QuickJS sandbox:', error);
@@ -336,7 +343,7 @@ export async function executeSandboxedCode(
 ): Promise<unknown> {
   if (!code || code.trim() === "") return input;
   
-  if (!quickJs) {
+  if (!runSandboxed) {
     throw new Error('Sandbox not initialized. Call initializeSandbox() first.');
   }
   
@@ -356,26 +363,24 @@ export async function executeSandboxedCode(
     }
     
     // Sicherer Datenübergabe-Mechanismus
-    // Option 1: Via QuickJS API (empfohlen, wenn verfügbar)
-    // Option 2: JSON.stringify mit Validierung (Fallback)
-    const serializedInput = JSON.stringify(input);
-    
+    // Der Input wird über globale Variable in der Sandbox verfügbar gemacht
     const wrappedCode = `
-      const input = JSON.parse('${serializedInput.replace(/'/g, "\\'")}');
-      const ${inputName} = input;
+      globalThis.input = ${JSON.stringify(input)};
+      globalThis.${inputName} = globalThis.input;
       
       ${executableCode}
     `;
     
-    const result = await quickJs.runSandboxed(
+    const options: SandboxOptions = {
+      timeoutMs: timeout,
+      memoryLimitMb: 8, // 8 MB Memory-Limit
+      allowFetch: false,
+      allowFs: false
+    };
+    
+    const result = await runSandboxed(
       async ({ evalCode }) => evalCode(wrappedCode),
-      {
-        timeoutMs: timeout,
-        memoryLimitMb: 8, // 8 MB Memory-Limit
-        allowFetch: false,
-        allowFs: false,
-        allowNodeModules: []
-      }
+      options
     );
     
     // Erfolgreiches Result
@@ -404,13 +409,19 @@ export async function executeSandboxedCode(
  * Cleanup-Funktion (optional, beim Server-Shutdown)
  */
 export async function shutdownSandbox() {
-  quickJs = null;
+  runSandboxed = null;
   console.log('QuickJS sandbox shutdown');
 }
 ```
 
 **Hinweis zur Datenübergabe:**
-Die gezeigte Implementierung verwendet `JSON.stringify` mit Escaping für die Datenübergabe. In der finalen Implementierung sollte geprüft werden, ob die QuickJS-API einen sichereren Mechanismus bietet (z.B. direktes Objekt-Passing über die VM-Grenze). Falls nicht verfügbar, ist die JSON-Serialisierung mit korrektem Escaping ausreichend, da der Code in einer isolierten WASM-Umgebung läuft und keine String-Injection-Angriffe auf den Host-Prozess möglich sind.
+Die Implementierung verwendet `globalThis` zur Datenübergabe in die Sandbox. Der Input wird als JSON serialisiert und in der isolierten Umgebung als globale Variable verfügbar gemacht. Da der Code in einer vollständig isolierten WebAssembly-Umgebung läuft, sind JSON-Injection-Angriffe auf den Host-Prozess nicht möglich - die Sandbox kann nur ihre eigene isolierte Umgebung manipulieren.
+
+**Sicherheitshinweise:**
+- `allowFetch: false` verhindert HTTP-Requests
+- `allowFs: false` verhindert Dateisystem-Zugriffe
+- `timeoutMs` verhindert Endlosschleifen
+- `memoryLimitMb` verhindert Memory-Exhaustion
 
 **Tests:**
 - Unit-Tests für verschiedene Code-Patterns
