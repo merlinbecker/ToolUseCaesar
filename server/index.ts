@@ -1,3 +1,8 @@
+/**
+ * ToolUseCaesar - Main Server Entry Point
+ * 
+ * For system architecture and goals, see: /arc42/01_introduction_and_goals.md
+ */
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";

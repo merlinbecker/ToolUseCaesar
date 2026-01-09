@@ -1,3 +1,9 @@
+/**
+ * ToolUseCaesar - Database Schema and Type Definitions
+ * 
+ * This schema defines the core data models for tools, chains, users, and API keys.
+ * For the architectural context and quality goals, see: /arc42/01_introduction_and_goals.md
+ */
 import { pgTable, text, boolean, integer, timestamp, jsonb, varchar } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
