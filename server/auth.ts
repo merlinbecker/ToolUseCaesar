@@ -58,9 +58,9 @@ export async function initializeAdminUser(): Promise<void> {
 }
 
 export function setupAuth(app: Express): void {
-  const sessionSecret = process.env.SESSION_SECRET;
+  const sessionSecret = process.env.SESSION_SECRET?.trim();
   
-  if (!sessionSecret || sessionSecret.trim().length === 0) {
+  if (!sessionSecret) {
     throw new Error(
       "SESSION_SECRET environment variable is required for security. " +
       "Please set a secure random string as SESSION_SECRET in your environment variables. " +
