@@ -108,13 +108,16 @@ endpoint: "https://api.example.com/weather",
 - Verletzt Qualitätsziel "Sicherheit" (Priorität 2)
 
 **Lösung:**
-- `server/auth.ts` (Zeilen 61-68) wirft nun einen Fehler, wenn `SESSION_SECRET` nicht gesetzt ist
+- `server/auth.ts` (Zeilen 61-77) implementiert nun strenge Validierung:
+  - Wirft Fehler, wenn `SESSION_SECRET` nicht gesetzt ist
+  - Wirft Fehler bei leeren Strings
+  - Wirft Fehler, wenn SESSION_SECRET < 32 Zeichen (Mindestlänge für kryptographische Sicherheit)
 - Keine hardcodierte Fallback-Werte mehr
-- Klare Fehlermeldung fordert Administrator auf, SESSION_SECRET zu setzen
+- Klare Fehlermeldungen mit Anleitung zur Generierung sicherer Secrets (`openssl rand -hex 32`)
 
 **Auswirkung:**
 - Die Anwendung startet nicht mehr ohne gesetztes SESSION_SECRET
-- Verhindert unsichere Deployments in Produktion
+- Verhindert unsichere Deployments in Produktion mit schwachen Secrets
 - Erfüllt nun Qualitätsziel "Sicherheit"
 
 ---
