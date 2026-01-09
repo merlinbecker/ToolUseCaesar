@@ -310,6 +310,14 @@ npm install @sebastianwessel/quickjs
 
 **Datei:** `server/sandbox.ts` (neu)
 
+**Wichtiger Hinweis:**  
+Der folgende Code basiert auf der dokumentierten API von `@sebastianwessel/quickjs` (Stand Januar 2026). Bei der tatsächlichen Implementierung **muss die genaue API-Struktur** gegen die aktuelle Bibliotheksversion verifiziert werden. Insbesondere:
+- Die Struktur des Return-Objekts (`result.ok`, `result.data`, `result.error`)
+- Verfügbare Optionen in `SandboxOptions`
+- Fehlerbehandlung und Exception-Types
+
+Falls die API abweicht, muss der Code entsprechend angepasst werden. Der Kern-Ansatz (WebAssembly-Isolation mit Timeout und Memory-Limits) bleibt jedoch gleich.
+
 ```typescript
 import { loadQuickJs, type SandboxOptions } from '@sebastianwessel/quickjs';
 
@@ -363,7 +371,12 @@ export async function executeSandboxedCode(
     }
     
     // Sicherer Datenübergabe-Mechanismus
-    // Der Input wird über globale Variable in der Sandbox verfügbar gemacht
+    // WICHTIG: Bei der Implementierung die tatsächliche API verifizieren!
+    // Alternative Ansätze falls globalThis nicht funktioniert:
+    // 1. Parameterübergabe über Function-Arguments (falls unterstützt)
+    // 2. Escaped JSON-String mit korrektem Escaping aller Sonderzeichen
+    // 3. Base64-Encoding des JSON-Strings
+    
     const wrappedCode = `
       globalThis.input = ${JSON.stringify(input)};
       globalThis.${inputName} = globalThis.input;
@@ -680,6 +693,13 @@ Bei nur einem verhinderten Sicherheitsvorfall (Cleanup-Kosten >>688€) ist die 
 - Start: Nach Freigabe
 - Fertigstellung: ~2 Arbeitstage
 - Go-Live: Nach erfolgreichem Staging-Test
+
+**Wichtiger Implementierungshinweis:**
+Vor Beginn der Implementierung muss die aktuelle API-Dokumentation von `@sebastianwessel/quickjs` konsultiert werden. Die in diesem Konzept gezeigten Code-Beispiele basieren auf der dokumentierten API (Stand Januar 2026), aber Library-Updates können API-Änderungen mit sich bringen. Insbesondere sollten geprüft werden:
+- Die genaue Signatur von `loadQuickJs()` und `runSandboxed()`
+- Die Struktur der Rückgabewerte (`result.ok`, `result.data`, `result.error`)
+- Verfügbare Konfigurationsoptionen in `SandboxOptions`
+- Alternative Mechanismen zur Datenübergabe in die Sandbox
 
 ---
 
