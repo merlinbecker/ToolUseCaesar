@@ -1,22 +1,8 @@
-# Tooluse Caesar 2
+# Tooluse Caesar 2 - Technical Documentation
+
+> **Note**: Für eine Übersicht der Anforderungen, Ziele und Stakeholder siehe [arc42 Kapitel 1: Einführung und Ziele](/arc42/01_introduction_and_goals.md)
 
 A web-based tool management system for LLM agents with Mistral-compatible function calls and an integrated MCP server.
-
-## Overview
-
-Tooluse Caesar 2 allows developers to define, test, and deploy tools for LLM agents without local setup. It provides a clean UI for tool management and exposes APIs that agents can use directly.
-
-## Key Features
-
-- **Tool Definition**: Create tools with Mistral-compatible metadata (name, description, JSON Schema parameters)
-- **Tool Chains**: Combine multiple tools into sequential workflows with output-to-input mapping
-- **HTTP Configuration**: Define endpoint, method, headers, and body templates for API calls
-- **Pre/Post Processing**: JavaScript functions for data transformation before/after API calls
-- **Fake Responses**: Static responses for rapid prototyping without external API calls
-- **MCP Server**: Automatic endpoint providing active tools and chains in Mistral function call format
-- **Authentication**: Session-based authentication with admin user created from environment variables
-- **User Management**: Admin can create additional users via Settings page
-- **API-Key Security**: MCP endpoints require API key in URL path (404 otherwise)
 
 ## Authentication
 
