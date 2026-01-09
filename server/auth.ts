@@ -58,10 +58,19 @@ export async function initializeAdminUser(): Promise<void> {
 }
 
 export function setupAuth(app: Express): void {
+  const sessionSecret = process.env.SESSION_SECRET;
+  
+  if (!sessionSecret) {
+    throw new Error(
+      "SESSION_SECRET environment variable is required for security. " +
+      "Please set a secure random string as SESSION_SECRET in your environment variables."
+    );
+  }
+  
   const MemoryStore = createMemoryStore(session);
   
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || "tooluse-caesar-secret-key",
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     store: new MemoryStore({
