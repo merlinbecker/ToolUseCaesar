@@ -314,8 +314,13 @@ let quickJs: QuickJsRuntime | null = null;
  */
 export async function initializeSandbox() {
   if (!quickJs) {
-    quickJs = await loadQuickJs();
-    console.log('QuickJS sandbox initialized');
+    try {
+      quickJs = await loadQuickJs();
+      console.log('QuickJS sandbox initialized');
+    } catch (error) {
+      console.error('Failed to initialize QuickJS sandbox:', error);
+      throw new Error('Sandbox initialization failed. Server cannot start without sandbox support.');
+    }
   }
 }
 
@@ -350,9 +355,13 @@ export async function executeSandboxedCode(
       executableCode = code;
     }
     
-    // Wrapper-Code mit Input-Injection
+    // Sicherer Datenübergabe-Mechanismus
+    // Option 1: Via QuickJS API (empfohlen, wenn verfügbar)
+    // Option 2: JSON.stringify mit Validierung (Fallback)
+    const serializedInput = JSON.stringify(input);
+    
     const wrappedCode = `
-      const input = ${JSON.stringify(input)};
+      const input = JSON.parse('${serializedInput.replace(/'/g, "\\'")}');
       const ${inputName} = input;
       
       ${executableCode}
@@ -400,11 +409,15 @@ export async function shutdownSandbox() {
 }
 ```
 
+**Hinweis zur Datenübergabe:**
+Die gezeigte Implementierung verwendet `JSON.stringify` mit Escaping für die Datenübergabe. In der finalen Implementierung sollte geprüft werden, ob die QuickJS-API einen sichereren Mechanismus bietet (z.B. direktes Objekt-Passing über die VM-Grenze). Falls nicht verfügbar, ist die JSON-Serialisierung mit korrektem Escaping ausreichend, da der Code in einer isolierten WASM-Umgebung läuft und keine String-Injection-Angriffe auf den Host-Prozess möglich sind.
+
 **Tests:**
 - Unit-Tests für verschiedene Code-Patterns
 - Timeout-Tests
 - Memory-Limit-Tests
 - Error-Handling-Tests
+- **Sicherheitstests:** JSON-Injection-Versuche mit Sonderzeichen
 
 ---
 
@@ -575,7 +588,7 @@ Die neue Implementierung ist **100% abwärtskompatibel**:
 Falls QuickJS nicht mehr gewartet wird:
 
 **Option 1:** Migration zu isolated-vm (wenn wieder aktiv entwickelt)  
-**Option 2:** Migration zu nachfolgendem Projekt (z.B. Fiberglass)  
+**Option 2:** Migration zu nachfolgendem oder ähnlichem Projekt  
 **Option 3:** Eigenentwicklung WASM-Sandbox
 
 **Aufwand:** 1-2 Tage (Interface bleibt gleich)
@@ -663,7 +676,7 @@ Bei nur einem verhinderten Sicherheitsvorfall (Cleanup-Kosten >>688€) ist die 
 
 1. **CodeScan-Report:** `/reports/CodeScan.md`
 2. **QuickJS-Wrapper:** https://github.com/sebastianwessel/quickjs
-3. **QuickJS-Dokumentation:** https://sebastianwessel.github.io/quickjs/
+3. **QuickJS npm Dokumentation:** https://www.npmjs.com/package/@sebastianwessel/quickjs
 4. **isolated-vm:** https://github.com/laverdet/isolated-vm
 5. **Riza:** https://riza.io/
 6. **vm2 Security Advisory:** https://github.com/patriksimek/vm2/security/advisories
