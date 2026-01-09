@@ -58,10 +58,28 @@ export async function initializeAdminUser(): Promise<void> {
 }
 
 export function setupAuth(app: Express): void {
+  const sessionSecret = process.env.SESSION_SECRET?.trim();
+  
+  if (!sessionSecret) {
+    throw new Error(
+      "SESSION_SECRET environment variable is required for security. " +
+      "Please set a secure random string as SESSION_SECRET in your environment variables. " +
+      "Generate one using: openssl rand -hex 32"
+    );
+  }
+  
+  if (sessionSecret.length < 32) {
+    throw new Error(
+      "SESSION_SECRET must be at least 32 characters long for cryptographic security. " +
+      "Current length: " + sessionSecret.length + ". " +
+      "Generate a secure secret using: openssl rand -hex 32"
+    );
+  }
+  
   const MemoryStore = createMemoryStore(session);
   
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || "tooluse-caesar-secret-key",
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     store: new MemoryStore({
