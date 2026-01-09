@@ -555,7 +555,7 @@ Nach der Behebung des Session-Secret-Problems bleiben folgende kritische Sicherh
    - Keine Komplexitätsanforderungen
    - **Empfehlung:** Mindestens 8 Zeichen, Kombination aus Groß-/Kleinbuchstaben, Zahlen
 
-3. **Cookie-Security-Flag nur in Production** (server/auth.ts:80)
+3. **Cookie-Security-Flag nur in Production** (server/auth.ts:89)
    - `secure: process.env.NODE_ENV === "production"`
    - Problem: In Development-Umgebungen können Cookies über unverschlüsselte HTTP-Verbindungen gesendet werden
    - **Empfehlung:** Warnung loggen, wenn NODE_ENV !== "production" und HTTPS nicht verwendet wird
