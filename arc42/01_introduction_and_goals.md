@@ -68,6 +68,6 @@ Die folgende Tabelle zeigt die wichtigsten Stakeholder und ihre Erwartungen an d
 ## 1.4 Weitere Informationen
 
 - **Projekt-Repository**: [GitHub - ToolUseCaesar](https://github.com/merlinbecker/ToolUseCaesar)
-- **Technische Implementierung**: Siehe Kapitel 5 (Bausteinsicht) und Kapitel 8 (Konzepte)
+- **Technische Implementierung**: Weitere arc42-Kapitel (in Planung)
 - **API-Referenz**: Siehe [replit.md](/replit.md) für API-Endpoints
 - **Design-Richtlinien**: Siehe [design_guidelines.md](/design_guidelines.md)
